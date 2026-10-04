@@ -174,3 +174,8 @@ require (
 replace github.com/pkg/sftp => github.com/mickael-kerjean/pkg-sftp v0.0.0-20260723110711-dbfdb51a990e
 
 replace github.com/hirochachacha/go-smb2 => github.com/mickael-kerjean/go-smb2 v0.0.0-20260924063307-ee7f96e1a9a4
+
+// HTL fork: goftp fork adds Config.OptsAfterLogin, used to send RFC 2640
+// 'OPTS UTF8 ON' after login. IIS otherwise falls back to Windows-1252 and
+// mangles German umlauts (see server/plugin/plg_backend_ftp/index.go).
+replace github.com/mickael-kerjean/goftp => github.com/SteiningerSebastian/goftp v0.0.0-20261004211623-c44a452f2c17

@@ -102,6 +102,16 @@ func (f Ftp) Init(params map[string]string, app *App) (IBackend, error) {
 			Timeout:            timeout * time.Second,
 		}
 		cfg.Timeout = timeout
+		// RFC 2640: FTP servers that support the UTF8 feature (e.g. IIS) only
+		// switch their namespace/commands to UTF-8 AFTER the client sends
+		// "OPTS UTF8 ON". Without it IIS falls back to its ANSI codepage
+		// (Windows-1252) and non-ASCII filenames get mangled in both
+		// directions. goftp upstream parses the FEAT "UTF8" line but never
+		// sends the OPTS command after login and tolerates servers that
+		// answer 500/501 - plain ASCII-only servers are unaffected.
+		if os.Getenv("FTP_UTF8") != "false" {
+			cfg.OptsAfterLogin = []string{"OPTS UTF8 ON"}
+		}
 		if withTLS {
 			cfg.TLSConfig = &tls.Config{
 				InsecureSkipVerify:     true,
