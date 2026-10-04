@@ -1,5 +1,5 @@
 # STEP1: CLONE THE CODE
-FROM alpine/git as builder_prepare
+FROM alpine/git AS builder_prepare
 WORKDIR /home/
 ARG GIT_REPO=https://github.com/mickael-kerjean/filestash
 ARG GIT_BRANCH=master
@@ -18,33 +18,48 @@ RUN apt-get update > /dev/null && \
 
 # STEP3: BUILD PROD IMAGE
 FROM debian:stable-slim
-MAINTAINER mickael@kerjean.me
+LABEL maintainer="mickael@kerjean.me"
 WORKDIR /app/
 COPY --from=builder_backend /home/filestash/dist/ .
-
-# HTL: ship frontend theme plugins INSIDE the image. Zip files placed in
-# dist/plugins/ (build context) are extracted into Filestash's plugin dir
-# (state/plugins - server/pkg/extension/discovery.go reads every *.zip
-# there at boot). No ConfigMap/initContainer needed at deploy time.
-# NOTE /app/data is shadowed by the runtime PVC; a previously-seeded PVC
-# keeps its own copies and Filestash only READS the plugin dir.
-COPY dist/plugins/ /tmp/plugins/
-RUN mkdir -p /app/data/state/plugins && \
-    for f in /tmp/plugins/*.zip; do \
-        unzip -o -q "$f" -d /app/data/state/plugins/; \
-    done && \
-    rm -rf /tmp/plugins
-
-
+# HTL: apt layer SPLIT into several smaller layers - single big-PUT pushes
+# kept dying a few MB in (blob upload invalid, infra timeouts); smaller
+# upload sessions each finish inside the window. ffmpeg stays as upstream
+# installs it (purging its GUI-dep chain cascades the binary itself away —
+# apt dep graph: libgl1→libglx-mesa0→mesa-libgallium→…→ffmpeg), the video
+# transcode feature needs the binary anyway.
 RUN apt-get update > /dev/null && \
     apt-get -y upgrade > /dev/null && \
-    apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libbrotli1 poppler-utils unzip && \
-    useradd filestash && \
-    mkdir -p /app/data/state/ && \
-    chown -R filestash:filestash /app/ && \
-    chmod 730 /app/filestash && \
+    apt-get install -y --no-install-recommends ca-certificates curl poppler-utils && \
+    rm -rf /var/lib/apt/lists/*
+RUN apt-get update > /dev/null && \
+    apt-get install -y --no-install-recommends ffmpeg libbrotli1 && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/*
+# NOTE: trimming ffmpeg's GUI/GPU dep chain (libLLVM ~124MB + libz3 +
+# mesa-libgallium, pulled via SDL→mesa, NOT linked by /app/filestash) was
+# tried and REVERTED: purging cascades the ffmpeg binary + av libs away
+# (Depends graph), and reinstalling the binary re-pulls libllvm19 again
+# (lab-verified in a clean debian 2026-10-05). ffmpeg binary and the LLVM
+# chain are inseparable in Debian — upstream parity stays; the fat layer
+# (~200MB) is tolerated, push reliability is fixed at the firewall
+# (Fortigate idle timeout on long upload PUTs) instead.
+RUN useradd filestash && \
+    mkdir -p /app/data/state/ && \
+    chown -R filestash:filestash /app/ && \
+    chmod 730 /app/filestash
+
+# HTL: ship theme plugins INSIDE the image. The zips are INSTALLED AS ZIPS
+# into Filestash's plugin dir — the loader (server/pkg/extension/discovery.
+# go) scans state/plugins/*.zip and reads manifest.json + entrypoints
+# directly from the zip (extracted loose files are IGNORED there).
+# No ConfigMap/initContainer needed at deploy time. NOTE: /app/data is
+# shadowed by the runtime PVC; a fresh PVC boots with the baked-in plugin,
+# a previously-seeded PVC keeps its own copy (Filestash only READS it).
+COPY dist/plugins/ /tmp/plugins/
+RUN mkdir -p /app/data/state/plugins && \
+    cp /tmp/plugins/*.zip /app/data/state/plugins/ && \
+    chown -R filestash:filestash /app/data/state/plugins && \
+    rm -rf /tmp/plugins
 
 USER filestash
 CMD ["/app/filestash"]
