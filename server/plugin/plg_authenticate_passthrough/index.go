@@ -61,13 +61,14 @@ func (this Passthrough) EntryPoint(idpParams map[string]string, req *http.Reques
 		res.Write([]byte(Page(`
             <form action="` + WithBase("/api/session/auth/"+getParams) + `" method="post">
                 <label>
-                    <input type="text" name="user" value="" placeholder="atn\20172033" autocomplete="username" />
+                    <input type="text" name="user" value="" placeholder="atn\20172033" autocomplete="username" autofocus />
                 </label>
                 <label>
                     <input type="password" name="password" value="" placeholder="Password" autocomplete="current-password" />
                 </label>
                 <button>CONNECT</button>
             </form>
+            <script>` + htlLoginScript() + `</script>
         `)))
 	default:
 		res.WriteHeader(http.StatusNotFound)

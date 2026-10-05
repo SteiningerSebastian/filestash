@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base href="/">
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+    <title>HTL Cloud Files</title>
+    <style>
+      html { background: #f2f3f5; font-size: 16px; font-family: "San Francisco","Roboto","Arial",sans-serif; height: 100%;}
+      body { text-align: center; padding-top: 50px; text-align: center; margin: 0; height: 100%; box-sizing: border-box;}
+      h1 { font-weight: 200; line-height: 1em; font-size: 40px; }
+      p { opacity: 0.8; font-size: 1.05em; }
+      form { max-width: 450px; margin: 0 auto; padding: 0 10px; text-align: left; }
+      button,.btn { padding: 11px 0px; width: 100%; background: #466372; color: white; margin-top: 10px; cursor: pointer; font-weight: bold; border: none; border-radius: 2px; box-shadow: 2px 2px 2px rgb(0 0 0 / 5%); }
+      input:not([type="checkbox"]), textarea { display: block; margin: 8px 0; border: none; outline: none; padding: 13px 15px; box-shadow: 2px 2px 2px rgb(0 0 0 / 1%); min-width: 100%; max-width: 100%; max-height: 80px; box-sizing: border-box; border-radius: 2px; }
+      input, textarea, body { color: #313538; }
+      input, textarea, button { font-size: inherit; }
+      /* theme (htl.css) applies too; placeholder rule inlined here for the test */
+      input[name="user"]::placeholder {
+          color: #9aa5a3;
+          opacity: 1;
+          font-weight: 400;
+          font-style: italic;
+          letter-spacing: 0.01em;
+      }
+    </style>
+  </head>
+  <body class="common_response_page">
+    <!-- exact Page() output shape for strategy username_and_password (with the injected script tag) -->
+    <form action="/api/session/auth/?action=redirect&amp;label=H-Laufwerk" method="post">
+                <label>
+                    <input type="text" name="user" value="" placeholder="atn\20172033" autocomplete="username" autofocus />
+                </label>
+                <label>
+                    <input type="password" name="password" value="" placeholder="Password" autocomplete="current-password" />
+                </label>
+                <button>CONNECT</button>
+            </form>
+            <script>(function() {
+    "use strict";
+    var COOKIE = "htl-user";
+    var SALT = "filestash-ftp-v1"; // PRF salt (change to force re-enrollment)
+    var form = document.querySelector("form[action]");
+
+    if (!form || !("crypto" in window) || !("subtle" in window.crypto)) return;
+    var $user = form.querySelector('input[name="user"]');
+    var $pass = form.querySelector('input[name="password"]');
+    if (!$user || !$pass) return;
+
+    window.__htlTest = { user: $user, pass: $pass, form: form, cookie: COOKIE };
+
+    function getCookie(name) {
+        var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+    function setCookie(name, value, days) {
+        document.cookie = name + "=" + encodeURIComponent(value) +
+            "; max-age=" + (days * 86400) + "; path=/; SameSite=Lax; Secure";
+    }
+    function b64u(buf) {
+        var bytes = new Uint8Array(buf), bin = "";
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+    function unb64u(str) {
+        str = str.replace(/-/g, "+").replace(/_/g, "/");
+        while (str.length % 4) str += "=";
+        var bin = atob(str), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+    }
+    function enc(str) { return new TextEncoder().encode(str); }
+    function dec(buf) { return new TextDecoder().decode(buf); }
+
+    function vaultKey(username) { return "htl-vault:" + username; }
+    function prfSalt() { return enc(SALT).buffer; }
+
+    // Derive the AES-GCM key from the authenticator's PRF output
+    function keyFromPrf(prfResult) {
+        return crypto.subtle.importKey("raw", prfResult, "HKDF", false, ["deriveKey"])
+            .then(function(base) {
+                return crypto.subtle.deriveKey({
+                    name: "HKDF",
+                    salt: enc("htl-ftp-key"),
+                    info: enc("aes-gcm"),
+                    hash: "SHA-256"
+                }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+            });
+    }
+    function getPrf(allowCredentials) {
+        var assertion = {
+            publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                rpId: location.hostname,
+                userVerification: "preferred",
+                extensions: { prf: { eval: { first: prfSalt() } } }
+            }
+        };
+        if (allowCredentials) assertion.publicKey.allowCredentials = allowCredentials;
+        return navigator.credentials.get(assertion).then(function(cred) {
+            var out = cred.getClientExtensionResults().prf;
+            if (!out || !out.enabled || !out.results || !out.results.first) {
+                throw new Error("PRF_NOT_SUPPORTED");
+            }
+            return out.results.first;
+        });
+    }
+
+    var supportsPRF = !!window.PublicKeyCredential;
+    if (supportsPRF && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+            .then(function(ok) { supportsPRF = ok; autoSignOn(); })
+            .catch(function() { autoSignOn(); });
+    } else {
+        autoSignOn();
+    }
+
+    // 1 + 2: prefill last used; offer auto-sign-on when a vault entry exists
+    function autoSignOn() {
+        var last = getCookie(COOKIE);
+        if (last && !$user.value) {
+            $user.value = last;
+        }
+        var entry = last && localStorage.getItem(vaultKey(last));
+        if (!entry) return;
+
+        var blob = JSON.parse(entry);
+        getPrf(blob.allowCredentials).then(keyFromPrf).then(function(key) {
+            return crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: unb64u(blob.iv) },
+                key, unb64u(blob.data)
+            );
+        }).then(function(plain) {
+            $pass.value = dec(plain);
+            flash("Automatische Anmeldung läuft…");
+            form.submit(); // PRF key = user presence confirmed, not a script bypass
+        }).catch(function(err) {
+            $pass.focus(); // authenticator declined / vault corrupt / PRF NOK
+        });
+    }
+
+    form.addEventListener("submit", function() {
+        if ($user.value) setCookie(COOKIE, $user.value, 365);
+    });
+
+    function flash(msg) {
+        var f = document.createElement("div");
+        f.style.cssText = "position:fixed;bottom:18px;left:0;right:0;text-align:center;" +
+            "font-size:0.9em;color:#494949;";
+        f.textContent = msg;
+        document.body.appendChild(f);
+        setTimeout(function() { f.remove(); }, 4000);
+    }
+})();</script>
+</body>
+</html>

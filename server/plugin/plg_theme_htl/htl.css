@@ -186,14 +186,16 @@ body #app .component_connectform input:focus ~ component-icon img {
  * the Username placeholder so students see the expected format. Applies to
  * BOTH login surfaces: the connect-page form (.component_input[name="user"])
  * and the middleware passthrough page (Page()-rendered input[name="user"]).
- * ::placeholder styling only — typed input is unaffected.
- * The placeholder TEXT is set config-side (attribute_mapping params in
- * filestash.yaml use placeholder overrides on the form fields). */
+ * ::placeholder styling only — typed input is unaffected. Muted gray-gray,
+ * NOT bold: a placeholder must read as a placeholder; the last-used username
+ * lands as a real VALUE via the htl-user cookie (server-side script). */
 body #app input.component_input[name="user"]::placeholder,
 body input[name="user"]::placeholder {
-    color: var(--primary);
-    opacity: 0.85;
-    font-weight: 600;
+    color: #9aa5a3;
+    opacity: 1;
+    font-weight: 400;
+    font-style: italic;
+    letter-spacing: 0.01em;
 }
 body #app input.component_input[name="user"]:focus::placeholder,
 body input[name="user"]:focus::placeholder {
