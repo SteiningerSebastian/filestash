@@ -25,12 +25,6 @@ FROM debian:stable-slim
 LABEL maintainer="mickael@kerjean.me"
 WORKDIR /app/
 COPY --from=builder_backend /home/filestash/dist/ .
-# HTL: apt layer SPLIT into several smaller layers - single big-PUT pushes
-# kept dying a few MB in (blob upload invalid, infra timeouts); smaller
-# upload sessions each finish inside the window. ffmpeg stays as upstream
-# installs it (purging its GUI-dep chain cascades the binary itself away —
-# apt dep graph: libgl1→libglx-mesa0→mesa-libgallium→…→ffmpeg), the video
-# transcode feature needs the binary anyway.
 RUN apt-get update > /dev/null && \
     apt-get -y upgrade > /dev/null && \
     apt-get install -y --no-install-recommends ca-certificates curl poppler-utils && \
