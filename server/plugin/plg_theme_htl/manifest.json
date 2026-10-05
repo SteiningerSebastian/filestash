@@ -1,0 +1,14 @@
+{
+    "author": "HTL Neufelden (theme for Filestash)",
+    "version": "v0.2",
+    "modules": [
+        {
+            "type": "css",
+            "entrypoint": "htl.css"
+        },
+        {
+            "type": "patch",
+            "entrypoint": "htl.patch"
+        }
+    ]
+}

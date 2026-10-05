@@ -1,0 +1,21 @@
+diff --git a/public/assets/boot/ctrl_boot_frontoffice.js b/public/assets/boot/ctrl_boot_frontoffice.js
+index c8b422ba..fb2a1dd4 100644
+--- a/public/assets/boot/ctrl_boot_frontoffice.js
++++ b/public/assets/boot/ctrl_boot_frontoffice.js
+@@ -42,12 +42,10 @@ async function setup_xdg_open() {
+ async function setup_device() {
+     const className = "ontouchstart" in window ? "touch-yes" : "touch-no";
+     document.body.classList.add(className);
+-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+-        document.body.classList.add("dark-mode");
+-    }
+-    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function(e) {
+-        e.matches ? document.body.classList.add("dark-mode") : document.body.classList.remove("dark-mode");
+-    });
++    // HTL: dark mode is disabled on purpose - the school cloud ships a
++    // light/HTL theme only. Neither the OS setting nor the system theme
++    // switch may add the "dark-mode" class (the whole dark variant of the
++    // design system is inert without it).
+ }
+ 
+ async function setup_blue_death_screen() {

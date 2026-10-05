@@ -1,0 +1,479 @@
+/*
+ * HTL Neufelden theme for Filestash
+ * ----------------------------------
+ * Matches the school website (www.htl-neufelden.at, Divi + Divi Pixel):
+ *   - color: logo/primary teal  #009883, light teal #65D1C7
+ *   - text:  #494949 on white
+ *   - font:  Source Sans 3 (self-hosted by the website; here loaded from Google Fonts)
+ *   - square corners (border-radius: 0) + square teal CTA buttons
+ *   - dark gray footer band (#494949)
+ *
+ * Scope guards used throughout: "body:not(.dark-mode)" keeps dark mode usable
+ * and "#app" stays under every core selector's specificity.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap");
+
+html {
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+html,
+body,
+#n-lder #cat ~ #rbw ~ .background-color,
+body:not(.dark-mode) #app {
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+/* ============ DARK MODE IS DISABLED (school cloud = light/HTL only) ============
+ * Belt & suspenders: the boot patch (htl.patch) stops the dark-mode class
+ * from ever being added; these overrides make even FORCED dark-mode class
+ * combinations render identically to light mode, so nothing can go dark.
+ * Every dark rule in core CSS targets body.dark-mode / body or an ancestor
+ * .dark-mode, so resetting the tokens + the dark surfaces covers all of them. */
+body.dark-mode,
+body.dark-mode #app,
+body.dark-mode component-modal {
+    --primary: #009883;
+    --emphasis: #009883;
+    --emphasis-primary: #009883;
+    --emphasis-secondary: #65d1c7;
+    --bg-color: #f2f9f7;
+    --color: #494949;
+    --light: #7a7a7a;
+    --super-light: #f2f9f7;
+    --border: rgba(73, 73, 73, 0.15);
+    --dark: #494949;
+    --surface: #ffffff;
+}
+body.dark-mode {
+    background: var(--bg-color);
+    color: var(--color);
+}
+body.dark-mode input,
+body.dark-mode textarea {
+    color: var(--color);
+}
+.dark-mode .component_page_connect,
+body.dark-mode .component_page_filespage,
+body.dark-mode .component_filemanager_shell,
+body.dark-mode .component_filemanager_shell [data-bind="filemanager-children"],
+.dark-mode component-modal,
+.dark-mode .component_modal > div,
+.dark-mode .component_upload,
+.dark-mode .component_menubar,
+.dark-mode .component_filedownloader,
+.dark-mode .component_formviewer {
+    background: #fff;
+    color: var(--color);
+}
+.dark-mode .component_modal {
+    background: rgba(73, 73, 73, 0.35);
+}
+.dark-mode .scrolling [is="component_submenu"] {
+    background: #f2f9f7;
+}
+
+:root,
+body:not(.dark-mode) #app,
+body:not(.dark-mode) component-modal,
+body:not(.dark-mode) {
+    /* Filestash design-system tokens, re-pointed at the HTL brand */
+    --primary: #009883;             /* HTL teal (logo & buttons) */
+    --emphasis: #009883;            /* HTL teal (headings / strong accents) */
+    --emphasis-primary: #009883;    /* underline / hover accents */
+    --emphasis-secondary: #65d1c7;  /* light logo teal */
+    --bg-color: #f2f9f7;            /* pale teal page background (from the site) */
+    --color: #494949;               /* body text gray */
+    --light: #7a7a7a;
+    --super-light: #f2f9f7;
+    --dark: #494949;                /* footer band color */
+    --surface: #ffffff;
+    --border: rgba(73, 73, 73, 0.15);
+    --error: #f26d6d;
+    --success: #009883;
+}
+.dark-mode #app,
+.dark-mode component-modal {
+    --primary: #009883;
+    --emphasis: #009883;
+    --emphasis-primary: #65d1c7;
+    --emphasis-secondary: #65d1c7;
+    --bg-color: #1e1f22;
+    --color: #f1f1f1;
+    --light: #dfe1e5;
+    --border: #303438;
+    --dark: #2b2d30;
+}
+
+/* ============ SQUARE-CORNER brand geometry ============ */
+body #app button,
+body #app .component_input[type="file"]::file-selector-button,
+body #app [class*="box"],
+body #app .component_modal > div,
+body #app [aria-selected="true"],
+body #app .component_breadcrumb .component_path-element a.label span.title {
+    border-radius: 0 !important;
+}
+
+/* ============ LOGIN / CONNECT PAGE ============ */
+/* Pale teal stage behind the login box */
+body:not(.dark-mode) #app .component_page_connect {
+    background: #e8f4f1;
+}
+/* Login card: white sheet, square, hairline border */
+body:not(.dark-mode) #app .component_page_connection_form .box,
+body:not(.dark-mode) #app .component_page_connection_form div.buttons {
+    background: #fff;
+    border: 1px solid var(--border);
+    box-shadow: none;
+    border-radius: 0;
+}
+/* The I-Laufwerk / H-Laufwerk tab row = the site's square teal buttons */
+body:not(.dark-mode) #app .component_page_connection_form div.buttons button {
+    background: #fff;
+    border: 2px solid transparent;
+    color: var(--color);
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    border-radius: 0;
+    padding: 12px 5px;
+    font-size: 1rem;
+}
+body:not(.dark-mode) #app .component_page_connection_form div.buttons button:hover {
+    background: rgba(0, 152, 131, 0.06);
+    border-color: rgba(0, 152, 131, 0.25);
+}
+body:not(.dark-mode) #app .component_page_connection_form div.buttons button.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    box-shadow: none;
+}
+/* form field styling */
+body:not(.dark-mode) #app .component_page_connection_form form label {
+    color: var(--light);
+    font-style: normal;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+body:not(.dark-mode) #app .component_page_connection_form form button.emphasis,
+#app .component_page_connection_form form button.emphasis {
+    background: var(--primary);
+    color: #fff;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    border-radius: 0;
+    padding: 12px 24px;
+    box-shadow: none;
+}
+body #app .component_page_connection_form form button.emphasis:hover {
+    filter: brightness(0.93);
+}
+/* login inputs: focus underline in teal */
+body #app .component_connectform input,
+body #app .component_page_connection_form input:hover,
+body #app .component_page_connection_form input:focus,
+body #app .component_page_connection_form textarea:focus,
+body #app .component_connectform input:focus ~ component-icon img {
+    border-color: var(--emphasis-primary) !important;
+}
+/* default user hint — the NAS account format is atn\<school-id>; shown as
+ * the Username placeholder so students see the expected format. Applies to
+ * BOTH login surfaces: the connect-page form (.component_input[name="user"])
+ * and the middleware passthrough page (Page()-rendered input[name="user"]).
+ * ::placeholder styling only — typed input is unaffected.
+ * The placeholder TEXT is set config-side (attribute_mapping params in
+ * filestash.yaml use placeholder overrides on the form fields). */
+body #app input.component_input[name="user"]::placeholder,
+body input[name="user"]::placeholder {
+    color: var(--primary);
+    opacity: 0.85;
+    font-weight: 600;
+}
+body #app input.component_input[name="user"]:focus::placeholder,
+body input[name="user"]:focus::placeholder {
+    color: rgba(73, 73, 73, 0.55);
+    font-weight: 400;
+}
+
+/* forkme ribbon - restyle in brand colors (top-right of login) */
+body #app .component_forkme,
+body #app [data-bind="component_forkme"] .component_forkme {
+    display: none !important; /* the school deployment doesn't want a github ribbon */
+}
+
+/* ============ BACKOFFICE LOGON (admin setup page) ============ */
+body #app .common_response_page,
+.common_response_page {
+    background: #e8f4f1 !important;
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+}
+body #app .common_response_page form,
+.common_response_page form button,
+.common_response_page button {
+    background: var(--primary);
+    border-radius: 0;
+    font-family: inherit;
+}
+.common_response_page h1 {
+    color: var(--color);
+    font-weight: 700;
+}
+
+/* ============ FILE EXPLORER ============ */
+/* filemanager top shell */
+body:not(.dark-mode) #app .component_filemanager_shell,
+body #app .component_filemanager_shell {
+    background: var(--bg-color);
+}
+body:not(.dark-mode) #app .component_page_filespage {
+    background: var(--bg-color);
+}
+body:not(.dark-mode) #app .component_filemanager_shell [data-bind="filemanager-children"] {
+    background: #fff;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+/* sidebar brand mark — replaces the Filestash/gdrive "Drive" glyph.
+ * The h3 is position:relative so the ::before SVG inside it scrolls with
+ * the content and can never overlay the file list (the gdrive theme used
+ * an absolutely-positioned 45px glyph on h3, pinned top-left). */
+body #app .component_filemanager_shell .component_sidebar h3 {
+    position: relative;
+}
+body #app .component_filemanager_shell .component_sidebar h3:before,
+body:not(.dark-mode) #app .component_filemanager_shell .component_sidebar h3:before {
+    content: "";
+    width: 18px;
+    height: 18px;
+    top: 0;
+    left: 15px;
+    position: absolute;
+    filter: none;
+    background: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22%23009883%22%20d%3D%22M1.75%201A1.75%201.75%200%200%200%200%202.75v10.5C0%2014.216.784%2015%201.75%2015h12.5A1.75%201.75%200%200%200%2016%2013.25V4.25A1.75%201.75%200%200%200%2014.25%202.5H7.5a.25.25%200%200%201-.2-.1l-.9-1.2C6.07%201.26%205.55%201%205%201H1.75z%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat;
+    pointer-events: none;
+}
+/* kill the gdrive triangle wherever this theme was previously active:
+   its ::before paints the big 45px Google glyph — any instance on sidebar
+   h3 from another plugin stylesheet is overridden above via same-property
+   wins, but its base64 url() can leak through as background-image; this
+   resets the box model it relies on (position/size are re-set above). */
+body #app .component_filemanager_shell .component_sidebar h3 img[alt="directory"] {
+    opacity: 1;
+    filter: none;
+}
+/* sidebar heading = "Drive"-equivalent slot */
+body #app .component_filemanager_shell .component_sidebar h3,
+body:not(.dark-mode) #app [data-bind="sidebar"] h3 input {
+    font-family: "Source Sans 3", sans-serif;
+    font-weight: 700;
+    color: var(--color);
+}
+body:not(.dark-mode) #app [data-bind="sidebar"] h3 input::placeholder {
+    color: var(--light);
+}
+/* the currently selected sidebar entry = square teal chip */
+body:not(.dark-mode) #app [data-bind="sidebar"] a[aria-selected="true"] {
+    background: rgba(0, 152, 131, 0.12) !important;
+    border-left: 4px solid var(--primary);
+    border-radius: 0 !important;
+    color: var(--primary);
+    font-weight: 600;
+}
+body #app [data-bind="sidebar"] a[aria-selected="true"] img,
+body #app [data-bind="sidebar"] a[aria-selected="true"] component-icon img {
+    filter: none;
+}
+/* submenu bar (upload / new / … buttons) */
+body:not(.dark-mode) #app [is="component_submenu"] .component_submenu .action.left button,
+body:not(.dark-mode) #app .component_submenu .action.left button {
+    background: #fff;
+    border: 1px solid #494949;
+    color: #494949;
+    font-weight: 600;
+    text-transform: none;
+    border-radius: 0;
+    font-size: 0.9rem;
+}
+body:not(.dark-mode) #app [is="component_submenu"] .component_submenu .action.left button:hover {
+    background: #e8f4f1;
+    border-color: var(--primary);
+    color: var(--primary);
+}
+body:not(.dark-mode) #app [is="component_submenu"] .component_submenu .action.right {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 0;
+}
+body:not(.dark-mode) #app .scrolling [is="component_submenu"] {
+    background: #f2f9f7;
+}
+/* "frequently accessed" cards */
+body:not(.dark-mode) #app [is="component_frequently_access"] .frequent_wrapper a {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 0;
+}
+body:not(.dark-mode) #app [is="component_frequently_access"] .frequent_wrapper a:hover {
+    background: #e8f4f1;
+    border-color: var(--primary);
+}
+body #app [is="component_frequently_access"] .caption {
+    color: var(--light);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+/* file list items - flat, hairline separators, teal hover */
+body #app .list > .component_thing {
+    border-radius: 0;
+}
+body:not(.dark-mode) #app .list > .component_thing.view-list {
+    border-top: none;
+    border-bottom: 1px solid var(--border);
+}
+body:not(.dark-mode) #app .list > .component_thing.view-list:last-child {
+    border-bottom: none;
+}
+body #app .touch-no .component_thing:hover,
+body #app .list > .component_thing:hover {
+    background: rgba(0, 152, 131, 0.06) !important;
+    border-radius: 0;
+}
+body #app .component_thing.selected {
+    background: rgba(0, 152, 131, 0.1);
+}
+body #app .component_thing .file-details [data-bind="name"],
+body #app .component_thing .file-details .name {
+    font-weight: 500;
+}
+/* drag-select marquee */
+body #app [is="component_filesystem"] .component_filesystem [data-target="dragselect"] {
+    background: var(--primary);
+    border-radius: 0;
+}
+/* empty state ("this folder is empty") */
+body #app [is="component_filesystem"] .empty {
+    color: var(--light);
+    font-family: "Source Sans 3", sans-serif;
+}
+
+/* ============ MODALS (rename, delete, share, upload) ============ */
+body #app .component_modal > div {
+    background: #fff;
+    border-radius: 0;
+    box-shadow: 0 10px 40px rgba(73, 73, 73, 0.25);
+}
+body #app .component_modal {
+    background: rgba(73, 73, 73, 0.35);
+}
+body #app .component_popup .popup--content h1,
+body #app .component_popup .popup--content h2,
+body #app .component_popup .popup--content h3 {
+    color: var(--emphasis);
+    font-weight: 700;
+}
+body #app .component_popup .buttons {
+    font-family: "Source Sans 3", sans-serif;
+}
+/* left button = CANCEL (plain), right = OK (submit.emphasis, teal) */
+body #app .component_popup .buttons button[type="submit"] {
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: 0;
+    background: var(--primary);
+    color: #fff;
+}
+body #app .component_popup .buttons button[type="submit"]:hover,
+body #app .component_popup .buttons button[type="submit"]:focus {
+    filter: brightness(0.93);
+}
+body #app .component_popup .buttons button[type="button"] {
+    text-transform: uppercase;
+    font-weight: 600;
+    border-radius: 0;
+    background: #fff;
+    color: var(--color);
+    border: 1px solid var(--border);
+}
+body #app .component_popup .buttons button[type="button"]:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* ============ NOTIFICATIONS ============ */
+body #app component-notification .notification {
+    background: var(--dark);
+    color: #fff;
+    border-radius: 0;
+}
+
+/* ============ DROPDOWN ITEMS ============ */
+body #app component-dropdown .container li,
+body #app component-dropdown > div {
+    border-radius: 0;
+}
+body #app component-dropdown .container li:hover {
+    background: #e8f4f1;
+}
+
+/* ============ FAB (upload button) ============ */
+body #app .component_fab .content {
+    background: var(--primary);
+    border-radius: 0;
+}
+body #app .component_fab .content:active {
+    transform: scale(0.98);
+}
+
+/* ============ SPINNERS ============ */
+body #app .component_loader svg circle[stroke="#6f6f6f"] {
+    stroke: var(--primary);
+}
+
+/* scrollbars (webkit), teal thumb on hover */
+body #app ::-webkit-scrollbar-thumb {
+    background: rgba(73, 73, 73, 0.25);
+    border-radius: 0;
+}
+body #app ::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
+
+/* ============ TEXT ============ */
+body #app {
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--color);
+}
+body #app h1,
+body #app h2 {
+    color: var(--color);
+    font-weight: 700;
+}
+body #app h3,
+body #app h4 {
+    color: var(--emphasis);
+    font-weight: 700;
+}
+body #app a,
+body #app [role="link"] {
+    color: inherit;
+}
+body #app a:hover,
+body #app [role="link"]:hover {
+    color: var(--emphasis);
+}
+
+/* breadcrumb hover state */
+body #app .component_breadcrumb .component_path-element a.label:hover span,
+body #app .component_breadcrumb .component_path-element .label:hover {
+    color: var(--emphasis-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
