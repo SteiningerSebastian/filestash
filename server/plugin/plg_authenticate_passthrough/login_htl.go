@@ -49,13 +49,131 @@ func htlLoginScript() string {
     var $pass = form.querySelector('input[name="password"]');
     if (!$user || !$pass) return;
 
+    /* Storage is NOT guaranteed on this page: the login form is served from
+     * /api/session/auth/ and strict browser settings (blocked third-party
+     * cookies/partitioned storage, extensions, private mode, Firefox ETP)
+     * make ANY access to document.cookie or localStorage throw
+     * "Access to storage is not allowed from this context". That must never
+     * break the plain FTP login — AND the vault must still function: the
+     * payload is stored in the FIRST writeable tier of
+     *   localStorage → sessionStorage → IndexedDB → cookie (24h cap).
+     * (IndexedDB is probed separately — Chrome allows/denies it independent
+     * of localStorage in some partitioned contexts.)
+     * The stored blob is ALWAYS PRF-encrypted, so a weaker tier never has
+     * the plaintext; the cookie tier additionally caps the lifetime at 24h
+     * to limit its wider attack surface (cookies ride every request). */
+    var TIER_LOCAL = 1, TIER_SESSION = 2, TIER_IDB = 3, TIER_COOKIE = 4;
+    var TIER_COOKIE_MAX_AGE = 86400; // 24h cap for the weakest tier
+    function probe(fn) { try { return fn() === true; } catch (e) { return false; } }
+    var localOK = probe(function() {
+        window.localStorage.setItem("__htl_probe__", "1");
+        var ok = window.localStorage.getItem("__htl_probe__") === "1";
+        window.localStorage.removeItem("__htl_probe__"); return ok;
+    });
+    var sessionOK = probe(function() {
+        window.sessionStorage.setItem("__htl_probe__", "1");
+        var ok = window.sessionStorage.getItem("__htl_probe__") === "1";
+        window.sessionStorage.removeItem("__htl_probe__"); return ok;
+    });
+    var cookieOK = probe(function() {
+        document.cookie = "__htl_probe__=1; max-age=3600; path=/; SameSite=Lax; Secure";
+        var ok = document.cookie.indexOf("__htl_probe__=") !== -1;
+        document.cookie = "__htl_probe__=; max-age=0; path=/"; return ok;
+    });
+    var idbOK = "indexedDB" in window;
+    var idbReady = null;
+    if (idbOK) {
+        idbReady = new Promise(function(resolve) {
+            try {
+                var open = indexedDB.open("htl-vault-db", 1);
+                open.onupgradeneeded = function() {
+                    open.result.createObjectStore("kv");
+                };
+                open.onsuccess = function() { resolve(open.result); };
+                open.onerror = function() { resolve(null); };
+                open.onblocked = function() { resolve(null); };
+                setTimeout(function() { resolve(null); }, 3000);
+            } catch (e) { resolve(null); }
+        });
+    }
+
     function getCookie(name) {
-        var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-        return m ? decodeURIComponent(m[1]) : "";
+        if (!cookieOK) return "";
+        try {
+            var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+            return m ? decodeURIComponent(m[1]) : "";
+        } catch (e) { return ""; }
     }
     function setCookie(name, value, days) {
-        document.cookie = name + "=" + encodeURIComponent(value) +
-            "; max-age=" + (days * 86400) + "; path=/; SameSite=Lax; Secure";
+        if (!cookieOK) return;
+        try {
+            document.cookie = name + "=" + encodeURIComponent(value) +
+                "; max-age=" + (days * 86400) + "; path=/; SameSite=Lax; Secure";
+        } catch (e) {}
+    }
+
+    function idbGet(key) {
+        if (!idbReady) return Promise.resolve(null);
+        return idbReady.then(function(db) {
+            if (!db) return null;
+            return new Promise(function(resolve) {
+                try {
+                    var tx = db.transaction("kv", "readonly");
+                    var req = tx.objectStore("kv").get(key);
+                    req.onsuccess = function() { resolve(req.result || null); };
+                    req.onerror = function() { resolve(null); };
+                    tx.onabort = function() { resolve(null); };
+                } catch (e) { resolve(null); }
+            });
+        });
+    }
+    function idbSet(key, value) {
+        if (!idbReady) return Promise.resolve(false);
+        return idbReady.then(function(db) {
+            if (!db) return false;
+            return new Promise(function(resolve) {
+                try {
+                    var tx = db.transaction("kv", "readwrite");
+                    tx.objectStore("kv").put(value, key);
+                    tx.oncomplete = function() { resolve(true); };
+                    tx.onerror = function() { resolve(false); };
+                    tx.onabort = function() { resolve(false); };
+                } catch (e) { resolve(false); }
+            });
+        });
+    }
+
+    /* vaultGet: checks every tier, most-trusted first. Cookie tier entries
+     * carry "t":TIER_COOKIE so expired-later reads are possible but only
+     * fresh (24h) ones count. Asynchronous because IndexedDB is. */
+    function vaultGet(key, cb) {
+        var v = null;
+        if (localOK) { try { v = window.localStorage.getItem(key); } catch (e) {} }
+        if (v) return cb(JSON.parse(v));
+        if (sessionOK) { try { v = window.sessionStorage.getItem(key); } catch (e) {} }
+        if (v) return cb(JSON.parse(v));
+        idbGet(key).then(function(w) {
+            if (w) return cb(JSON.parse(w));
+            var raw = getCookie(key); // cookie tier: name=value(json)
+            if (raw) {
+                try { var o = JSON.parse(raw); if (o && o.t === TIER_COOKIE) return cb(o); } catch (e) {}
+            }
+            cb(null);
+        }).catch(function() { cb(null); });
+    }
+    /* vaultSet: writes EVERY writeable tier (redundancy across contexts —
+     * later visits may pass a different tier but not fail). */
+    function vaultSet(key, obj) {
+        var saved = false;
+        if (localOK) { try { window.localStorage.setItem(key, JSON.stringify(obj)); saved = true; } catch (e) {} }
+        if (sessionOK) { try { window.sessionStorage.setItem(key, JSON.stringify(obj)); saved = true; } catch (e) {} }
+        if (idbReady) { idbSet(key, JSON.stringify(obj)).then(function() {}); }
+        if (cookieOK) {
+            var withTier = obj; withTier.t = TIER_COOKIE;
+            setCookie(key, JSON.stringify(withTier), TIER_COOKIE_MAX_AGE / 86400);
+            saved = true;
+        }
+        return saved;
     }
     function b64u(buf) {
         var bytes = new Uint8Array(buf), bin = "";
@@ -121,21 +239,21 @@ func htlLoginScript() string {
         if (last && !$user.value) {
             $user.value = last;
         }
-        var entry = last && localStorage.getItem(vaultKey(last));
-        if (!entry) return;
-
-        var blob = JSON.parse(entry);
-        getPrf(blob.allowCredentials).then(keyFromPrf).then(function(key) {
-            return crypto.subtle.decrypt(
-                { name: "AES-GCM", iv: unb64u(blob.iv) },
-                key, unb64u(blob.data)
-            );
-        }).then(function(plain) {
-            $pass.value = dec(plain);
-            flash("Automatische Anmeldung l u00e4uft…");
-            form.submit(); // PRF key = user presence confirmed, not a script bypass
-        }).catch(function(err) {
-            $pass.focus(); // authenticator declined / vault corrupt / PRF NOK
+        if (!last) return;
+        vaultGet(vaultKey(last), function(blob) {
+            if (!blob || !blob.iv || !blob.data) return;
+            getPrf(blob.allowCredentials).then(keyFromPrf).then(function(key) {
+                return crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: unb64u(blob.iv) },
+                    key, unb64u(blob.data)
+                );
+            }).then(function(plain) {
+                $pass.value = dec(plain);
+                flash("Automatische Anmeldung l u00e4uft…");
+                form.submit(); // PRF key = user presence confirmed, not a script bypass
+            }).catch(function(err) {
+                $pass.focus(); // authenticator declined / vault corrupt / PRF NOK
+            });
         });
     }
 
@@ -176,47 +294,51 @@ func htlLoginScript() string {
         form.parentElement.insertBefore(banner, form.nextSibling);
 
         yes.addEventListener("click", function() {
+            if (!supportsPRF) { flash("Authenticator ohne PRF — kann nicht speichern"); return; }
             // encrypt: register a PRF credential only if none yet, else reuse
             // (allowCredentials unknown here; get() with empty allow list +
             // prf ext gives the platform credential's PRF secret)
             var allow = null;
-            var entry = localStorage.getItem(vaultKey(username));
-            if (entry) { try { allow = JSON.parse(entry).allowCredentials; } catch (e) {} }
-            var credPromise = allow
-                ? Promise.resolve(allow)
-                : navigator.credentials.get({
-                    publicKey: {
-                        challenge: crypto.getRandomValues(new Uint8Array(32)),
-                        rpId: location.hostname,
-                        userVerification: "preferred",
-                        extensions: { prf: { eval: { first: prfSalt() } } }
-                    }
-                }).then(function(cred) {
-                    return [{
-                        type: cred.type,
-                        id: b64u(cred.rawId)
-                    }];
-                });
-            credPromise
-                .then(function(allowList) {
-                    return getPrf(allowList).then(keyFromPrf).then(function(key) {
-                        var iv = crypto.getRandomValues(new Uint8Array(12));
-                        return crypto.subtle.encrypt(
-                            { name: "AES-GCM", iv: iv },
-                            key, enc(password)
-                        ).then(function(cipher) {
-                            localStorage.setItem(vaultKey(username), JSON.stringify({
-                                iv: b64u(iv.buffer),
-                                data: b64u(cipher),
-                                allowCredentials: allowList
-                            }));
-                            setCookie(COOKIE, username, 365);
-                            banner.remove();
-                            flash("Gemesichert u2013 beim ne00e4chsten Mal wirst du automatisch angemeldet.");
-                        });
+            vaultGet(vaultKey(username), function(prev) {
+                if (prev && prev.allowCredentials) allow = prev.allowCredentials;
+                var credPromise = allow
+                    ? Promise.resolve(allow)
+                    : navigator.credentials.get({
+                        publicKey: {
+                            challenge: crypto.getRandomValues(new Uint8Array(32)),
+                            rpId: location.hostname,
+                            userVerification: "preferred",
+                            extensions: { prf: { eval: { first: prfSalt() } } }
+                        }
+                    }).then(function(cred) {
+                        return [{
+                            type: cred.type,
+                            id: b64u(cred.rawId)
+                        }];
                     });
-                })
-                .catch(function() { flash("Konnte nicht gespeichert werden (Authenticator ohne PRF?)"); });
+                credPromise
+                    .then(function(allowList) {
+                        return getPrf(allowList).then(keyFromPrf).then(function(key) {
+                            var iv = crypto.getRandomValues(new Uint8Array(12));
+                            return crypto.subtle.encrypt(
+                                { name: "AES-GCM", iv: iv },
+                                key, enc(password)
+                            ).then(function(cipher) {
+                                var ok = vaultSet(vaultKey(username), {
+                                    iv: b64u(iv.buffer),
+                                    data: b64u(cipher),
+                                    allowCredentials: allowList
+                                });
+                                setCookie(COOKIE, username, 365);
+                                banner.remove();
+                                flash(ok
+                                    ? "Gespeichert — beim nächsten Mal wirst du automatisch angemeldet."
+                                    : "Kein Speicher verfügbar — konnte nicht gespeichert werden.");
+                            });
+                        });
+                    })
+                    .catch(function() { flash("Konnte nicht gespeichert werden (Authenticator ohne PRF?)"); });
+            });
         });
         no.addEventListener("click", function() { banner.remove(); });
     }

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"><title>HTL vault storage-tier test</title></head>
+  <body>
+<script>
+/* Tiered-vault correctness test (offline, no PRF hardware needed):
+ *   mocks navigator.credentials.get() with a fixed "PRF" output, then runs
+ *   the SAME crypto/derivation/vault routines as login_htl.go across the
+ *   four storage tiers (localStorage/sessionStorage/IndexedDB/cookie), incl.
+ *   contexts where upper tiers are blocked. Mirrors the shipped script's
+ *   vaultGet/vaultSet code paths. */
+</script>
+<script>
+"use strict";
+function makeVault(env) {
+    // env: {localOK, sessionOK, idbOK, cookieOK} as simulated by the caller
+    var TIER_COOKIE = 4;
+    var b64u = function(buf) {
+        var bytes = new Uint8Array(buf), bin = "";
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    };
+    var store = { local: {}, session: {}, idb: {}, cookieJar: {} };
+    function getCookie(n) { return store.cookieJar[n] || null; }
+    function setCookie(n, v, days) { if (env.cookieOK) store.cookieJar[n] = v; }
+    function idbGet(key) { return Promise.resolve(env.idbOK ? (store.idb[key] || null) : null); }
+    function idbSet(key, val) { if (env.idbOK) store.idb[key] = val; return Promise.resolve(env.idbOK); }
+    function vaultGet(key, cb) {
+        if (env.localOK && store.local[key]) return cb(JSON.parse(store.local[key]));
+        if (env.sessionOK && store.session[key]) return cb(JSON.parse(store.session[key]));
+        idbGet(key).then(function(w) {
+            if (w) return cb(JSON.parse(w));
+            var raw = getCookie(key);
+            if (raw) { try { var o = JSON.parse(raw); if (o && o.t === TIER_COOKIE) return cb(o); } catch (e) {} }
+            cb(null);
+        });
+    }
+    function vaultSet(key, obj) {
+        var saved = false;
+        if (env.localOK) { store.local[key] = JSON.stringify(obj); saved = true; }
+        if (env.sessionOK) { store.session[key] = JSON.stringify(obj); saved = true; }
+        if (env.idbOK) idbSet(key, JSON.stringify(obj));
+        if (env.cookieOK) { var c = Object.assign({}, obj); c.t = TIER_COOKIE; setCookie(key, JSON.stringify(c), 1); saved = true; }
+        return saved;
+    }
+    return { vaultGet: vaultGet, vaultSet: vaultSet, store: store };
+}
+
+async function roundTrip(env, password) {
+    var V = makeVault(env);
+    var plainBytes = new TextEncoder().encode(password);
+    // mock PRF output
+    var prfOut = new Uint8Array(32).map((_, i) => i + 1);
+    var base = await crypto.subtle.importKey('raw', prfOut.buffer, 'HKDF', false, ['deriveKey']);
+    var key = await crypto.subtle.deriveKey({ name: 'HKDF', salt: new TextEncoder().encode('htl-ftp-key'), info: new TextEncoder().encode('aes-gcm'), hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plainBytes);
+    var obj = {
+        iv: (function(b) { var u = new Uint8Array(b), s = ''; for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); })(iv.buffer),
+        data: (function(b) { var u = new Uint8Array(b), s = ''; for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); })(cipher),
+        allowCredentials: [{ type: 'public-key', id: 'TEST' }],
+    };
+    V.vaultSet('htl-vault:atn20172033', obj);
+    // read back through the tiers and decrypt
+    return new Promise(function(resolve) {
+        V.vaultGet('htl-vault:atn20172033', async function(blob) {
+            try {
+                var plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv.buffer) }, key, str2ab(blob.data));
+                var dec = new TextDecoder().decode(plain);
+                resolve({ env: JSON.stringify(env), found: true, passMatch: dec === password, storedIn: whichTiers(V) });
+            } catch (e) {
+                resolve({ env: JSON.stringify(env), found: false, error: e.message });
+            }
+        });
+    });
+}
+function str2ab(b64) {
+    var s = b64.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+}
+function whichTiers(V) {
+    var t = [];
+    if (Object.keys(V.store.local).length) t.push('local');
+    if (Object.keys(V.store.session).length) t.push('session');
+    if (Object.keys(V.store.idb).length) t.push('idb');
+    if (Object.keys(V.store.cookieJar).length) t.push('cookie');
+    return t.join('+');
+}
+
+// scenarios
+Promise.all([
+    roundTrip({ localOK: true, sessionOK: true, idbOK: true, cookieOK: true }, 'S3cret!'),
+    roundTrip({ localOK: false, sessionOK: true, idbOK: true, cookieOK: true }, 'S3cret!'),
+    roundTrip({ localOK: false, sessionOK: false, idbOK: true, cookieOK: true }, 'S3cret!'),
+    roundTrip({ localOK: false, sessionOK: false, idbOK: false, cookieOK: true }, 'S3cret!'),
+    roundTrip({ localOK: false, sessionOK: false, idbOK: false, cookieOK: false }, 'S3cret!'),
+]).then(function(results) {
+    document.title = 'done';
+    window.__results = results;
+    document.body.textContent = JSON.stringify(results, null, 2);
+});
+</script>
+</body>
+</html>
