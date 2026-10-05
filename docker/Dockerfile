@@ -1,7 +1,11 @@
 # STEP1: CLONE THE CODE
 FROM alpine/git AS builder_prepare
 WORKDIR /home/
-ARG GIT_REPO=https://github.com/mickael-kerjean/filestash
+# HTL: default to the FORK (OptsAfterLogin / OPTS UTF8 ON fix lives in the
+# backend code built from here). Building without --build-arg used to clone
+# UPSTREAM — silently shipping without the UTF-8 fix (verified: binary grep
+# had 0 hits for 'OPTS UTF8 ON'/'OptsAfterLogin', mojibake persisted).
+ARG GIT_REPO=https://github.com/SteiningerSebastian/filestash
 ARG GIT_BRANCH=master
 RUN git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO}
 
