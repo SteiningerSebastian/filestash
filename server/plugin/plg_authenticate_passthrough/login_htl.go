@@ -225,12 +225,37 @@ func htlLoginScript() string {
     }
 
     var supportsPRF = !!window.PublicKeyCredential;
-    if (supportsPRF && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-            .then(function(ok) { supportsPRF = ok; autoSignOn(); })
-            .catch(function() { autoSignOn(); });
-    } else {
+    var platformReady = Promise.resolve(window.PublicKeyCredential
+        && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
+        && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(function() { return false; })
+        || Promise.resolve(false));
+    platformReady.then(function(ok) {
+        supportsPRF = !!ok;
         autoSignOn();
+        mountRememberCheckbox();
+    });
+
+    // [+] Remember-Me UI: small checkbox under the password field — shown
+    // ALWAYS (the label explains the authenticator handles the secret).
+    // Checked = store the FTP password after this successful login.
+    function mountRememberCheckbox() {
+        var wrap = document.createElement("label");
+        wrap.className = "htl-remember";
+        wrap.style.cssText = "display:flex;align-items:center;gap:8px;margin:6px 0 0 0;" +
+            "font-size:0.85em;color:#494949;cursor:pointer;user-select:none;";
+        var box = document.createElement("input");
+        box.type = "checkbox";
+        box.id = "htl-remember-box";
+        box.style.cssText = "width:15px;height:15px;accent-color:#009883;cursor:pointer;";
+        wrap.appendChild(box);
+        var txt = document.createElement("span");
+        txt.textContent = "Auf diesem Gerät merken (Windows Hello / Passkey)";
+        wrap.appendChild(txt);
+        form.appendChild(wrap);
+        if (getCookie(COOKIE)) {
+            var has = !!localStorage.getItem(vaultKey(getCookie(COOKIE)));
+            box.checked = has;
+        }
     }
 
     // 1 + 2: prefill last used; offer auto-sign-on when a vault entry exists
@@ -257,90 +282,61 @@ func htlLoginScript() string {
         });
     }
 
-    // remember-on-success banner (shown after a manual login via ?saved=1)
-    var url = new URL(location.href);
-    if (url.searchParams.get("htl") === "saved") return;
-    if (url.searchParams.get("htl") === "remember" && $user.value) {
-        offerRemember($user.value, $pass.value);
-    }
-
-    // 3: on successful manual login, submit sets the cookie BEFORE nav
-    form.addEventListener("submit", function() {
+    // 3: SUBMIT = the only decision point: checked+PRF → encrypt+store;
+    // unchecked → purge the vault entry. Then the login proceeds as normal.
+    form.addEventListener("submit", function(ev) {
         if ($user.value) setCookie(COOKIE, $user.value, 365);
-    });
-    // ...then the server redirects back with __next; the remember-flow is
-    // triggered via the query param the callback URL keeps (htl=remember)
-    function offerRemember(username, password) {
-        if (!supportsPRF || !password) return;
-        var banner = document.createElement("div");
-        banner.className = "htl-remember";
-        banner.style.cssText = "max-width:450px;margin:12px auto 0;padding:12px 16px;" +
-            "background:#fff;border:1px solid rgba(73,73,73,0.15);font-size:0.92em;" +
-            "display:flex;align-items:center;justify-content:space-between;gap:12px;";
-        banner.innerHTML = '<span>Kennstoff u00fcr <strong>' + username +
-            '</strong> auf diesem Gere00e4t merken?</span>';
-        var yes = document.createElement("button");
-        yes.type = "button";
-        yes.textContent = "Merken";
-        yes.style.cssText = "padding:8px 18px;background:#009883;color:#fff;" +
-            "border:none;cursor:pointer;font-weight:600;text-transform:uppercase;" +
-            "font-size:0.85em;letter-spacing:0.04em;";
-        var no = document.createElement("button");
-        no.type = "button";
-        no.textContent = "Nein";
-        no.style.cssText = "padding:8px 14px;background:#fff;color:#494949;" +
-            "border:1px solid rgba(73,73,73,0.25);cursor:pointer;margin-left:8px;";
-        banner.appendChild(yes); banner.appendChild(no);
-        form.parentElement.insertBefore(banner, form.nextSibling);
-
-        yes.addEventListener("click", function() {
-            if (!supportsPRF) { flash("Authenticator ohne PRF — kann nicht speichern"); return; }
-            // encrypt: register a PRF credential only if none yet, else reuse
-            // (allowCredentials unknown here; get() with empty allow list +
-            // prf ext gives the platform credential's PRF secret)
-            var allow = null;
-            vaultGet(vaultKey(username), function(prev) {
-                if (prev && prev.allowCredentials) allow = prev.allowCredentials;
-                var credPromise = allow
-                    ? Promise.resolve(allow)
-                    : navigator.credentials.get({
-                        publicKey: {
-                            challenge: crypto.getRandomValues(new Uint8Array(32)),
-                            rpId: location.hostname,
-                            userVerification: "preferred",
-                            extensions: { prf: { eval: { first: prfSalt() } } }
-                        }
-                    }).then(function(cred) {
-                        return [{
-                            type: cred.type,
-                            id: b64u(cred.rawId)
-                        }];
-                    });
-                credPromise
-                    .then(function(allowList) {
-                        return getPrf(allowList).then(keyFromPrf).then(function(key) {
-                            var iv = crypto.getRandomValues(new Uint8Array(12));
-                            return crypto.subtle.encrypt(
-                                { name: "AES-GCM", iv: iv },
-                                key, enc(password)
-                            ).then(function(cipher) {
-                                var ok = vaultSet(vaultKey(username), {
-                                    iv: b64u(iv.buffer),
-                                    data: b64u(cipher),
-                                    allowCredentials: allowList
-                                });
-                                setCookie(COOKIE, username, 365);
-                                banner.remove();
-                                flash(ok
-                                    ? "Gespeichert — beim nächsten Mal wirst du automatisch angemeldet."
-                                    : "Kein Speicher verfügbar — konnte nicht gespeichert werden.");
-                            });
-                        });
-                    })
-                    .catch(function() { flash("Konnte nicht gespeichert werden (Authenticator ohne PRF?)"); });
-            });
+        var box = document.getElementById("htl-remember-box");
+        if (!box) return; // no checkbox rendered (no PRF) → plain login
+        if (!box.checked) {
+            try { localStorage.removeItem(vaultKey($user.value)); } catch (e) {}
+            try { sessionStorage.removeItem(vaultKey($user.value)); } catch (e) {}
+            return; // plain login
+        }
+        // CHECKED: store the FTP password under the username — the PRF key
+        // lives in the authenticator, this prompt is the enrollment.
+        ev.preventDefault();
+        var username = $user.value, password = $pass.value;
+        rememberAndLogin(username, password, function(stored) {
+            if (stored) { flash("Gespeichert — beim nächsten Mal wirst du automatisch angemeldet."); }
+            form.submit();
         });
-        no.addEventListener("click", function() { banner.remove(); });
+    });
+
+    // encrypt+store the password under a PRF-derived key (the ONLY place a
+    // credential.get({prf}) is invoked for storing)
+    function rememberAndLogin(username, password, done) {
+        if (!supportsPRF || !password) { done(false); return; }
+        var prfSalt = enc(SALT);
+        var p = navigator.credentials.get({
+            publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                rpId: location.hostname,
+                userVerification: "preferred",
+                extensions: { prf: { eval: { first: prfSalt.buffer } } }
+            }
+        }).then(function(cred) {
+            var out = cred.getClientExtensionResults().prf;
+            if (!out || !out.enabled || !out.results || !out.results.first) throw new Error("PRF_NOT_SUPPORTED");
+            return {
+                first: out.results.first,
+                allowCredentials: [{ type: cred.type, id: b64u(cred.rawId) }]
+            };
+        }).then(function(prf) {
+            return keyFromPrf(prf.first).then(function(key) {
+                var iv = crypto.getRandomValues(new Uint8Array(12));
+                return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc(password))
+                    .then(function(cipher) {
+                        var saved = vaultSet(vaultKey(username), {
+                            iv: b64u(iv.buffer),
+                            data: b64u(cipher),
+                            allowCredentials: prf.allowCredentials
+                        });
+                        done(saved);
+                    });
+            });
+        }).catch(function() { done(false); });
+        return p;
     }
 
     function flash(msg) {
