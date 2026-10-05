@@ -27,6 +27,7 @@
   </head>
   <body class="common_response_page">
     <!-- exact Page() output shape for strategy username_and_password (with the injected script tag) -->
+    <!-- script below mirrors login_htl.go: last-used cookie prefill only, NO vault/checkbox -->
     <form action="/api/session/auth/?action=redirect&amp;label=H-Laufwerk" method="post">
                 <label>
                     <input type="text" name="user" value="" placeholder="atn\20172033" autocomplete="username" autofocus />
@@ -39,118 +40,76 @@
             <script>(function() {
     "use strict";
     var COOKIE = "htl-user";
-    var SALT = "filestash-ftp-v1"; // PRF salt (change to force re-enrollment)
     var form = document.querySelector("form[action]");
 
-    if (!form || !("crypto" in window) || !("subtle" in window.crypto)) return;
+    if (!form) return;
     var $user = form.querySelector('input[name="user"]');
-    var $pass = form.querySelector('input[name="password"]');
-    if (!$user || !$pass) return;
+    if (!$user) return;
 
-    window.__htlTest = { user: $user, pass: $pass, form: form, cookie: COOKIE };
+    /* Storage is NOT guaranteed on this page: the login form is served from
+     * /api/session/auth/ and strict browser settings (blocked third-party
+     * cookies/partitioned storage, extensions, private mode, Firefox ETP)
+     * make ANY access to document.cookie throw "Access to storage is not
+     * allowed from this context". That must never break the plain FTP
+     * login: every cookie touch is gated behind a probe and wrapped in
+     * try/catch. The htl-user cookie is a hint, NEVER a credential. */
+    function probe(fn) { try { return fn() === true; } catch (e) { return false; } }
+    var cookieOK = probe(function() {
+        document.cookie = "__htl_probe__=1; max-age=3600; path=/; SameSite=Lax; Secure";
+        var ok = document.cookie.indexOf("__htl_probe__=") !== -1;
+        document.cookie = "__htl_probe__=; max-age=0; path=/"; return ok;
+    });
 
     function getCookie(name) {
-        var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-        return m ? decodeURIComponent(m[1]) : "";
+        if (!cookieOK) return "";
+        try {
+            var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+            return m ? decodeURIComponent(m[1]) : "";
+        } catch (e) { return ""; }
     }
     function setCookie(name, value, days) {
-        document.cookie = name + "=" + encodeURIComponent(value) +
-            "; max-age=" + (days * 86400) + "; path=/; SameSite=Lax; Secure";
+        if (!cookieOK) return;
+        try {
+            document.cookie = name + "=" + encodeURIComponent(value) +
+                "; max-age=" + (days * 86400) + "; path=/; SameSite=Lax; Secure";
+        } catch (e) {}
     }
-    function b64u(buf) {
-        var bytes = new Uint8Array(buf), bin = "";
-        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-        return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    }
-    function unb64u(str) {
-        str = str.replace(/-/g, "+").replace(/_/g, "/");
-        while (str.length % 4) str += "=";
-        var bin = atob(str), bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return bytes;
-    }
-    function enc(str) { return new TextEncoder().encode(str); }
-    function dec(buf) { return new TextDecoder().decode(buf); }
 
-    function vaultKey(username) { return "htl-vault:" + username; }
-    function prfSalt() { return enc(SALT).buffer; }
-
-    // Derive the AES-GCM key from the authenticator's PRF output
-    function keyFromPrf(prfResult) {
-        return crypto.subtle.importKey("raw", prfResult, "HKDF", false, ["deriveKey"])
-            .then(function(base) {
-                return crypto.subtle.deriveKey({
-                    name: "HKDF",
-                    salt: enc("htl-ftp-key"),
-                    info: enc("aes-gcm"),
-                    hash: "SHA-256"
-                }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
-            });
-    }
-    function getPrf(allowCredentials) {
-        var assertion = {
-            publicKey: {
-                challenge: crypto.getRandomValues(new Uint8Array(32)),
-                rpId: location.hostname,
-                userVerification: "preferred",
-                extensions: { prf: { eval: { first: prfSalt() } } }
+    // Keep the vault out of every storage tier: entries written by the
+    // retired remember-password feature are purged on first load (plain
+    // storage access — the tier probes above only apply to new writes).
+    function purgeLegacyVault() {
+        try {
+            for (var i = window.localStorage.length - 1; i >= 0; i--) {
+                var k = window.localStorage.key(i);
+                if (k && k.indexOf("htl-vault:") === 0) window.localStorage.removeItem(k);
             }
-        };
-        if (allowCredentials) assertion.publicKey.allowCredentials = allowCredentials;
-        return navigator.credentials.get(assertion).then(function(cred) {
-            var out = cred.getClientExtensionResults().prf;
-            if (!out || !out.enabled || !out.results || !out.results.first) {
-                throw new Error("PRF_NOT_SUPPORTED");
+        } catch (e) {}
+        try {
+            for (var j = window.sessionStorage.length - 1; j >= 0; j--) {
+                var k2 = window.sessionStorage.key(j);
+                if (k2 && k2.indexOf("htl-vault:") === 0) window.sessionStorage.removeItem(k2);
             }
-            return out.results.first;
-        });
-    }
-
-    var supportsPRF = !!window.PublicKeyCredential;
-    if (supportsPRF && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-            .then(function(ok) { supportsPRF = ok; autoSignOn(); })
-            .catch(function() { autoSignOn(); });
-    } else {
-        autoSignOn();
-    }
-
-    // 1 + 2: prefill last used; offer auto-sign-on when a vault entry exists
-    function autoSignOn() {
+        } catch (e) {}
         var last = getCookie(COOKIE);
-        if (last && !$user.value) {
-            $user.value = last;
+        if (last) {
+            try { document.cookie = ("htl-vault:" + last) + "=; max-age=0; path=/"; } catch (e) {}
         }
-        var entry = last && localStorage.getItem(vaultKey(last));
-        if (!entry) return;
-
-        var blob = JSON.parse(entry);
-        getPrf(blob.allowCredentials).then(keyFromPrf).then(function(key) {
-            return crypto.subtle.decrypt(
-                { name: "AES-GCM", iv: unb64u(blob.iv) },
-                key, unb64u(blob.data)
-            );
-        }).then(function(plain) {
-            $pass.value = dec(plain);
-            flash("Automatische Anmeldung läuft…");
-            form.submit(); // PRF key = user presence confirmed, not a script bypass
-        }).catch(function(err) {
-            $pass.focus(); // authenticator declined / vault corrupt / PRF NOK
-        });
+        try {
+            if ("indexedDB" in window && indexedDB.deleteDatabase) {
+                indexedDB.deleteDatabase("htl-vault-db");
+            }
+        } catch (e) {}
     }
+    purgeLegacyVault();
+
+    // 1 + submit: prefill last used; refresh the hint cookie on every login
+    var last = getCookie(COOKIE);
+    if (last && !$user.value) $user.value = last;
 
     form.addEventListener("submit", function() {
         if ($user.value) setCookie(COOKIE, $user.value, 365);
     });
-
-    function flash(msg) {
-        var f = document.createElement("div");
-        f.style.cssText = "position:fixed;bottom:18px;left:0;right:0;text-align:center;" +
-            "font-size:0.9em;color:#494949;";
-        f.textContent = msg;
-        document.body.appendChild(f);
-        setTimeout(function() { f.remove(); }, 4000);
-    }
 })();</script>
 </body>
 </html>

@@ -24,7 +24,9 @@ const MIME = {
 
 http.createServer((req, res) => {
     let urlPath = decodeURIComponent(req.url.split("?")[0]);
-    if (urlPath === "/") urlPath = "/plugin/plg_theme_htl/verify/mockup.html";
+    // theme plugin sources live under server/plugin/, not a top-level plugin/
+    urlPath = urlPath.replace(/^\/plugin\//, "/server/plugin/");
+    if (urlPath === "/") urlPath = "/server/plugin/plg_theme_htl/verify/mockup.html";
     const filePath = path.join(ROOT, urlPath);
     if (!filePath.startsWith(ROOT)) {
         res.writeHead(403); res.end(); return;
