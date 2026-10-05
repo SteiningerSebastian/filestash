@@ -249,9 +249,12 @@ func htlLoginScript() string {
         box.style.cssText = "width:15px;height:15px;accent-color:#009883;cursor:pointer;";
         wrap.appendChild(box);
         var txt = document.createElement("span");
-        txt.textContent = "Auf diesem Gerät merken (Windows Hello / Passkey)";
+        txt.textContent = "Remember on this device (Windows Hello / Passkey)";
         wrap.appendChild(txt);
-        form.appendChild(wrap);
+        // position the row ABOVE the CONNECT button (form ends with the button)
+        var $btn = form.querySelector("button");
+        if ($btn) form.insertBefore(wrap, $btn);
+        else form.appendChild(wrap);
         if (getCookie(COOKIE)) {
             var has = !!localStorage.getItem(vaultKey(getCookie(COOKIE)));
             box.checked = has;
@@ -274,7 +277,7 @@ func htlLoginScript() string {
                 );
             }).then(function(plain) {
                 $pass.value = dec(plain);
-                flash("Automatische Anmeldung l u00e4uft…");
+                flash("Automatic sign-on in progress…");
                 form.submit(); // PRF key = user presence confirmed, not a script bypass
             }).catch(function(err) {
                 $pass.focus(); // authenticator declined / vault corrupt / PRF NOK
@@ -298,7 +301,7 @@ func htlLoginScript() string {
         ev.preventDefault();
         var username = $user.value, password = $pass.value;
         rememberAndLogin(username, password, function(stored) {
-            if (stored) { flash("Gespeichert — beim nächsten Mal wirst du automatisch angemeldet."); }
+            if (stored) { flash("Saved — next time you will be signed on automatically"); }
             form.submit();
         });
     });
@@ -349,13 +352,6 @@ func htlLoginScript() string {
     }
 })();
 `)
-	// keep the script plain ASCII for the Go raw string
-	return strings.NewReplacer(
-		"Kennstoff", "Kennwort",
-		"Gere00e4t", "Gerät",
-		"Gemesichert", "Gespeichert",
-		"ne00e4chsten", "nächsten",
-		"l u00e4uft", "läuft",
-		"u00fcr", "für",
-	).Replace(s.String())
+	// all user-facing strings are plain ASCII/English; return as-is
+	return s.String()
 }
