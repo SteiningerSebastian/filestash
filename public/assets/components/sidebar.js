@@ -1,11 +1,13 @@
 import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
 import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
-import { qs } from "../lib/dom.js";
+import { qs, safe } from "../lib/dom.js";
 import { settingsGet, settingsSave } from "../lib/store.js";
 import { loadCSS } from "../helpers/loader.js";
 import t from "../locales/index.js";
 import { getCurrentPath } from "../pages/viewerpage/common.js";
 import { generateSkeleton } from "./skeleton.js";
+import { getSession } from "../model/session.js";
+import { htlHomeUser } from "../pages/filespage/helper.js";
 
 import ctrlNavigationPane from "./sidebar_files.js";
 import ctrlTagPane from "./sidebar_tags.js";
@@ -15,8 +17,30 @@ export default async function ctrlSidebar(render, {}) {
     else if (window.self !== window.top) return;
     else if (document.body.clientWidth < 850) return;
 
+    // feature (HTL): home-drive ("H:") quick link, HARDCODED in this template
+    // (part of the DOM from the first paint — nothing can race or wipe it).
+    // Label comes from the session home (/Users/<username>); click resolves
+    // the target THEN -> always /files/Users/<username>/. Hidden entirely
+    // when no username is derivable (eg. unauthenticated).
+    let username = "";
+    try {
+        const session = await getSession().pipe(rxjs.first()).toPromise();
+        const home = (session || {}).home || "";
+        username = htlHomeUser(home) || (home.split("/").filter((c) => c !== "")[0] || "");
+    } catch (err) {}
+    const homeHref = username ? toHref("/files/Users/" + encodeURIComponent(username).replaceAll("%2F", "/")) : null;
+    const homeIcon = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20fill='%23009883'%20d='M1.5%202A1.5%201.5%200%200%200%200%203.5V12.5A1.5%201.5%200%200%200%201.5%2014H14.5A1.5%201.5%200%200%200%2016%2012.5V5.5A1.5%201.5%200%200%200%2014.5%204H8.2L6.9%202.4A1%201%200%200%200%206.2%202Z'/%3E%3C/svg%3E";
+
     const $sidebar = render(createElement(`
-        <div class="component_sidebar"><div>
+        <div class="component_sidebar"><div>${homeHref ? `
+            <ul class="htl-quickshare">
+                <li class="no-select">
+                    <a data-link href="${homeHref}" draggable="false" aria-selected="false" title="/Users/${safe(username)}/">
+                        <img class="component_icon" src="${homeIcon}" alt="directory" draggable="false">
+                        <div class="ellipsis">${safe(username)}</div>
+                    </a>
+                </li>
+            </ul>` : ""}
             <h3 class="no-select">
                 <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgYXJpYS1oaWRkZW49InRydWUiCiAgIGZvY3VzYWJsZT0iZmFsc2UiCiAgIHJvbGU9ImltZyIKICAgY2xhc3M9Im9jdGljb24gb2N0aWNvbi1zaWRlYmFyLWV4cGFuZCIKICAgdmlld0JveD0iMCAwIDE2IDE2IgogICB3aWR0aD0iMTYiCiAgIGhlaWdodD0iMTYiCiAgIGZpbGw9ImN1cnJlbnRDb2xvciIKICAgc3R5bGU9ImRpc3BsYXk6IGlubGluZS1ibG9jazsgdXNlci1zZWxlY3Q6IG5vbmU7IHZlcnRpY2FsLWFsaWduOiB0ZXh0LWJvdHRvbTsgb3ZlcmZsb3c6IHZpc2libGU7IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmc3MjI3IgogICBzb2RpcG9kaTpkb2NuYW1lPSJnaXRodWJmb2xkLnN2ZyIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMS4yLjIgKGIwYTg0ODY1NDEsIDIwMjItMTItMDEpIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM3MjMxIiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3NzIyOSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiMwMDAwMDAiCiAgICAgYm9yZGVyb3BhY2l0eT0iMC4yNSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMC4wIgogICAgIGlua3NjYXBlOnBhZ2VjaGVja2VyYm9hcmQ9IjAiCiAgICAgaW5rc2NhcGU6ZGVza2NvbG9yPSIjZDFkMWQxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBpbmtzY2FwZTp6b29tPSIxNC43NSIKICAgICBpbmtzY2FwZTpjeD0iNC4yMDMzODk4IgogICAgIGlua3NjYXBlOmN5PSI4IgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTgxNyIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMzk3IgogICAgIGlua3NjYXBlOndpbmRvdy14PSI3IgogICAgIGlua3NjYXBlOndpbmRvdy15PSIzNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctbWF4aW1pemVkPSIxIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9InN2ZzcyMjciIC8+CiAgPHBhdGgKICAgICBkPSJtNC4xNzcgNy44MjMgMi4zOTYtMi4zOTZBLjI1LjI1IDAgMCAxIDcgNS42MDR2NC43OTJhLjI1LjI1IDAgMCAxLS40MjcuMTc3TDQuMTc3IDguMTc3YS4yNS4yNSAwIDAgMSAwLS4zNTRaIgogICAgIGlkPSJwYXRoNzIyMyIKICAgICBzdHlsZT0iZmlsbDojNTc1OTVhO2ZpbGwtb3BhY2l0eToxIiAvPgogIDxwYXRoCiAgICAgZD0iTTAgMS43NUMwIC43ODQuNzg0IDAgMS43NSAwaDEyLjVDMTUuMjE2IDAgMTYgLjc4NCAxNiAxLjc1djEyLjVBMS43NSAxLjc1IDAgMCAxIDE0LjI1IDE2SDEuNzVBMS43NSAxLjc1IDAgMCAxIDAgMTQuMjVabTEuNzUtLjI1YS4yNS4yNSAwIDAgMC0uMjUuMjV2MTIuNWMwIC4xMzguMTEyLjI1LjI1LjI1SDkuNXYtMTNabTEyLjUgMTNhLjI1LjI1IDAgMCAwIC4yNS0uMjVWMS43NWEuMjUuMjUgMCAwIDAtLjI1LS4yNUgxMXYxM1oiCiAgICAgaWQ9InBhdGg3MjI1IgogICAgIHN0eWxlPSJmaWxsOiM1NzU5NWE7ZmlsbC1vcGFjaXR5OjEiIC8+Cjwvc3ZnPgo=" alt="close" class="pointer">
                 <input type="text" placeholder="${t("Your Files")}" />

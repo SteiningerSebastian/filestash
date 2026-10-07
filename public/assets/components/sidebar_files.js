@@ -4,7 +4,6 @@ import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
 import cache from "../pages/filespage/cache.js";
-import { getSession } from "../model/session.js";
 import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser } from "../pages/filespage/helper.js";
 import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
 import { hooks, mv as mv$ } from "../pages/filespage/model_files.js";
@@ -16,8 +15,9 @@ const ICONS = {
 };
 
 export default async function ctrlNavigationPane(render, { $sidebar, path }) {
-    // feature (HTL): home-drive quick link at the very top of the sidebar.
-    installHomeShortcut($sidebar);
+    // feature (HTL): the home-drive quick link is HARDCODED in sidebar.js's
+    // own template now (race-free, part of the first paint) — nothing to do
+    // here anymore.
 
     // feature: init dom
     const $fs = document.createDocumentFragment();
@@ -103,64 +103,6 @@ const mv = (from, to) => withVirtualLayer(
     mv$(from, to),
     mvVL(from, to),
 );
-
-/* HTL: home-drive ("H:") quick link, pinned above "Your Files".
- * - Lives in its own slot: the holder's children are H3 / [your-files] /
- *   [your-tags]; we insert a stable sibling right before [your-files]. That
- *   zone is NEVER touched by the nav-pane render pipeline (it only swaps
- *   ULs INSIDE [data-bind="your-files"]), so no insertBefore across parents.
- * - IDEMPOTENT: replace-if-exists, never stacks between navigations (an
- *   earlier version stacked a fresh copy on every navigation).
- * - The username comes from the session (backend "home"), so the link also
- *   exists on the ROOT page where no /Users path has been visited yet.
- * - Never gets aria-selected (that's what made it stay highlighted).
- * - Pure navigation to /files/Users/<username>; server authz stays the gate.
- * - Plain querySelector: the shared qs() helper THROWS NotFoundError on
- *   empty matches (first-install is the normal empty case).
- * - withInstantLoad's cache replay can swap the holder's children WHILE the
- *   session fetch is inflight ("insertBefore: not a child of this node"), so
- *   refs are re-validated at insert time and the whole install retries a
- *   few times instead of dying on the first race.
- */
-function installHomeShortcut($sidebar, attemptsLeft = 10) {
-    const $holder = $sidebar.querySelector(":scope > div");
-    const $yourFiles = $holder ? $holder.querySelector('[data-bind="your-files"]') : null;
-    if (!$holder || !$yourFiles || $yourFiles.parentElement !== $holder) {
-        // lists not rendered yet (skeleton phase): retry shortly
-        if (attemptsLeft > 0) window.setTimeout(() => installHomeShortcut($sidebar, attemptsLeft - 1), 150);
-        return;
-    }
-    getSession().pipe(rxjs.first()).subscribe((session) => {
-        const home0 = (session || {}).home || "";
-        const username = htlHomeUser(home0) ||
-            (home0.split("/").filter((c) => c !== "")[0] || "");
-        if (!username) return;
-        // re-validate refs INSIDE the callback: the async gap is exactly
-        // where withInstantLoad's cache-replay swaps the DOM out
-        const $holderNow = $sidebar.querySelector(":scope > div");
-        const $yourFilesNow = $holderNow
-            ? $holderNow.querySelector('[data-bind="your-files"]')
-            : null;
-        if (!$holderNow || !$yourFilesNow || $yourFilesNow.parentElement !== $holderNow) {
-            if (attemptsLeft > 0) window.setTimeout(() => installHomeShortcut($sidebar, attemptsLeft - 1), 150);
-            return;
-        }
-        const home = "/Users/" + username + "/";
-        const $previous = $holderNow.querySelector(".htl-quickshare");
-        if ($previous) $previous.remove();
-        const $home = createElement(`
-            <ul class="htl-quickshare">
-                <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
-                    <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
-                        <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
-                        <div class="ellipsis">${safe(username)}</div>
-                    </a>
-                </li>
-            </ul>
-        `);
-        $holderNow.insertBefore($home, $yourFilesNow);
-    }, () => {}); // storage-denied / 401: no shortcut, no unhandled rejection
-}
 
 async function _createListOfFiles(path, { basename = null, dirname = null }) {
     const MAX_DISPLAY = 100;
