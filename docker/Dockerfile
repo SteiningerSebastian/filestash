@@ -1,3 +1,5 @@
+# Can be deployed using E:\HTL\Infrastruktur\26-IT-Infrastruktur\docs\apps\filestash\filestashDeploy.ps1
+
 # STEP1: SOURCE
 # HTL: build from the LOCAL WORKING TREE by default - no clone, what you
 # have on disk is what gets compiled (still: COMMIT + PUSH before shipping,
