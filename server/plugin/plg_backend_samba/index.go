@@ -19,7 +19,7 @@ var SambaCache AppCache
 func init() {
 	Backend.Register("samba", Samba{})
 
-	SambaCache = NewAppCache()
+	SambaCache = NewAppCache(60*time.Minute, 10*time.Minute) // HTL: was 5min; a too-early TTL expiry + evict tore down LIVE user sessions mid-browsing ("connection reset by peer" after a download, fixed only by re-login). Long retention + (below) never logoff a busy session.
 	SambaCache.OnEvict(func(key string, value interface{}) {
 		smb := value.(*Samba)
 		if smb.inflight.Load() != 0 {
