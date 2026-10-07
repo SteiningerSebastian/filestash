@@ -9,7 +9,8 @@ import { createLoader } from "../../components/loader.js";
 import t from "../../locales/index.js";
 import ctrlError from "../ctrl_error.js";
 
-import { currentPath, sort, isMobile, isAlreadyFocused } from "./helper.js";
+import { currentPath, sort, isMobile, isAlreadyFocused, htlIsHiddenShare } from "./helper.js";
+import { basename } from "../../lib/path.js";
 import { createThing } from "./thing.js";
 import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
 import { getState$ } from "./state_config.js";
@@ -98,6 +99,13 @@ export default async function(render) {
         )),
         rxjs.mergeMap(({ show_hidden, files, search, ...rest }) => {
             if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
+            // HTL: system shares (fileexchange, dfs, users) stay fully
+            // protected server side but are pointless noise in a student's
+            // view - hide them at the storage root only (same folder names
+            // are legit deeper in the tree / in search results).
+            if (!search && currentPath() === "/") {
+                files = files.filter((f) => htlIsHiddenShare(f.name || basename(f.path || "")) === false);
+            }
             if (!search) files = sort(files, rest["sort"], rest["order"]);
             return rxjs.of({ ...rest, files, search });
         }),

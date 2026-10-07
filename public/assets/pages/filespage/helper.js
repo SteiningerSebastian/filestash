@@ -135,3 +135,27 @@ export const isAlreadyFocused = () => {
     const tagName = assert.type(document.activeElement, HTMLElement).tagName;
     return ["INPUT", "TEXTAREA"].indexOf(tagName) !== -1;
 };
+
+// // HTL Neufelden (fork): the storage root exposes a handful of system shares
+// (file exchange, DFS, "Users", ...). They are confusing to students and of no
+// use to them - the interesting target is their own home drive (the <username>
+// folder under "/Users/"). Helpers below power:
+//   - sidebar.js / sidebar_files.js: hide those shares in the navigation pane
+//   - ctrl_filesystem.js: hide them in the main file listing (root page only)
+//   - ctrl_homepage.js: land users directly in their own home drive
+// Nothing is removed server side: authentication AND authorisation keep being
+// enforced by the backend (the entries are hidden, not deleted).
+export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "Users"];
+
+// "/Users/jdoe/school/project.txt" -> "jdoe"
+export const htlHomeUser = (path) => {
+    const chunks = (path || "").split("/").filter((chunks) => chunks !== "");
+    if (chunks.length < 2 || chunks[0].toLowerCase() !== "Users") return "";
+    return decodeURIComponent(chunks[1]);
+};
+
+// "/Users/jdoe/" -> "/Users/jdoe/" | "/Users/jdoe/stuff" -> "/Users/jdoe/"
+export const htlHomeDir = (user) => user ? "/Users/" + user + "/" : "";
+
+export const htlIsHiddenShare = (name = "") =>
+    HTL_SYSTEM_SHARES.indexOf(name.toLowerCase()) !== -1;

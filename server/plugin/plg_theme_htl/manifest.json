@@ -1,6 +1,6 @@
 {
     "author": "HTL Neufelden (theme for Filestash)",
-    "version": "v0.2",
+    "version": "v0.3",
     "modules": [
         {
             "type": "css",

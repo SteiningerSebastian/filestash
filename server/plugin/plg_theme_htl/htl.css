@@ -479,3 +479,50 @@ body #app .component_breadcrumb .component_path-element .label:hover {
     text-decoration: underline;
     text-underline-offset: 3px;
 }
+/* ============ HTL FORK: HOME DRIVE ("H:") ============ */
+/* The sidebar shows a fake quick link to /Users/<username> (built in
+ * sidebar_files.js) and the user's own folder inside /Users is tagged with
+ * data-htl-home="true". Give both the teal home-folder look. */
+body #app .component_sidebar ul.htl-quickshare {
+    margin: 0 0 0 5px;
+    padding: 0;
+    list-style-type: none;
+}
+body #app .component_sidebar ul.htl-quickshare li {
+    margin-top: 2px;
+    padding-left: 5px;
+    padding-right: 2px;
+}
+body #app .component_sidebar ul.htl-quickshare a {
+    display: flex;
+    padding: 5px 5px 5px 10px;
+    width: 100%;
+    box-sizing: border-box;
+    letter-spacing: -0.2px;
+    color: var(--emphasis);
+    font-weight: 600;
+}
+body #app .component_sidebar ul.htl-quickshare a .component_icon {
+    width: 16px;
+    margin-right: 2px;
+}
+body.touch-no #app .component_sidebar ul.htl-quickshare a:hover,
+body #app .component_sidebar ul.htl-quickshare a[aria-selected="true"] {
+    background: var(--border);
+    border-radius: 3px;
+}
+/* home folder row inside /Users: teal icon + slightly bolder name */
+body #app .component_sidebar li[data-htl-home="true"] > a > .component_icon[alt=""] {
+    width: 10px;
+    height: 16px;
+    object-fit: contain;
+    object-position: right;
+    margin-left: -12px;
+    filter: drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.15));
+}
+body #app .component_sidebar li[data-htl-home="true"] > a div.ellipsis {
+    font-weight: 600;
+}
+body #app .component_thing[data-htl-home="true"] .component_filename {
+    font-weight: 600;
+}

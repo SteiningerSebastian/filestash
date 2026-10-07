@@ -4,12 +4,39 @@ import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
 import cache from "../pages/filespage/cache.js";
-import { extractPath, isDir, isNativeFileUpload } from "../pages/filespage/helper.js";
+import { extractPath, isDir, isNativeFileUpload, htlIsHiddenShare, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
 import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
 import { hooks, mv as mv$ } from "../pages/filespage/model_files.js";
 import ctrlError from "../pages/ctrl_error.js";
 
+// HTL: teal folder icon marking the user's own home drive in the sidebar
+const ICONS = {
+    HOME: "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20fill='%23009883'%20d='M1.5%202A1.5%201.5%200%200%200%200%203.5V12.5A1.5%201.5%200%200%200%201.5%2014H14.5A1.5%201.5%200%200%200%2016%2012.5V5.5A1.5%201.5%200%200%200%2014.5%204H8.2L6.9%202.4A1%201%200%200%200%206.2%202Z'/%3E%3C/svg%3E",
+};
+
 export default async function ctrlNavigationPane(render, { $sidebar, path }) {
+    // feature (HTL): quick link to the user's own home drive (their "H:").
+    // The storage exposes /Users/<username>; the shortcut is a fake folder
+    // named after the current user, sitting right under the search box and
+    // simply navigating to that directory on click. Skipped silently when
+    // the user name can't be mined from where we are (shares, embeds, ...).
+    const homeUser = htlHomeUser(path);
+    if (homeUser) {
+        const home = htlHomeDir(homeUser);
+        const $home = createElement(`
+            <ul class="htl-quickshare">
+                <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
+                    <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
+                        <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
+                        <div class="ellipsis">${safe(homeUser)}</div>
+                    </a>
+                </li>
+            </ul>
+        `);
+        const $holder = qs($sidebar, ".component_sidebar > div");
+        $holder.insertBefore($home, qs($holder, `[data-bind="your-files"]`));
+    }
+
     // feature: init dom
     const $fs = document.createDocumentFragment();
     const dirname = path.replace(new RegExp("[^\/]*$"), "");
@@ -101,7 +128,8 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
     const whats = r === null
         ? (basename ? [basename] : [])
         : r.files
-            .filter(({ type, name }) => type === "directory" && name[0] !== ".")
+            .filter(({ type, name }) => type === "directory" && name[0] !== "." &&
+                htlIsHiddenShare(name) === false) // HTL: fileexchange / dfs / users are noise for students
             .map(({ name }) => name)
             .sort((a, b) => a.localeCompare(b));
 
@@ -110,11 +138,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
     const $ul = document.createElement("ul");
     for (let i=0; i<whats.length; i++) {
         const currpath = path + whats[i] + "/";
+        const homeUser = htlHomeUser(currpath);
         const $li = createElement(`
-            <li data-path="${safe(currpath)}" title="${safe(currpath)}" class="no-select">
+            <li data-path="${safe(currpath)}" title="${safe(currpath)}" ${homeUser ? "data-htl-home=\"true\"" : ""} class="no-select">
                 <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(currpath).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
                     <img class="component_icon" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgYXJpYS1oaWRkZW49InRydWUiCiAgIGZvY3VzYWJsZT0iZmFsc2UiCiAgIGNsYXNzPSJvY3RpY29uIG9jdGljb24tZmlsZS1kaXJlY3RvcnktZmlsbCIKICAgdmlld0JveD0iMCAwIDE2IDE2IgogICB3aWR0aD0iMTYiCiAgIGhlaWdodD0iMTYiCiAgIGZpbGw9ImN1cnJlbnRDb2xvciIKICAgc3R5bGU9ImRpc3BsYXk6IGlubGluZS1ibG9jazsgdXNlci1zZWxlY3Q6IG5vbmU7IHZlcnRpY2FsLWFsaWduOiB0ZXh0LWJvdHRvbTsgb3ZlcmZsb3c6IHZpc2libGU7IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxNTgiCiAgIHNvZGlwb2RpOmRvY25hbWU9ImdpdGh1YmZvbGRlci5zdmciCiAgIGlua3NjYXBlOnZlcnNpb249IjEuMi4yIChiMGE4NDg2NTQxLCAyMDIyLTEyLTAxKSIKICAgeG1sbnM6aW5rc2NhcGU9Imh0dHA6Ly93d3cuaW5rc2NhcGUub3JnL25hbWVzcGFjZXMvaW5rc2NhcGUiCiAgIHhtbG5zOnNvZGlwb2RpPSJodHRwOi8vc29kaXBvZGkuc291cmNlZm9yZ2UubmV0L0RURC9zb2RpcG9kaS0wLmR0ZCIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzdmc9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcwogICAgIGlkPSJkZWZzMTYyIiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MTYwIgogICAgIHBhZ2Vjb2xvcj0iI2ZmZmZmZiIKICAgICBib3JkZXJjb2xvcj0iIzAwMDAwMCIKICAgICBib3JkZXJvcGFjaXR5PSIwLjI1IgogICAgIGlua3NjYXBlOnNob3dwYWdlc2hhZG93PSIyIgogICAgIGlua3NjYXBlOnBhZ2VvcGFjaXR5PSIwLjAiCiAgICAgaW5rc2NhcGU6cGFnZWNoZWNrZXJib2FyZD0iMCIKICAgICBpbmtzY2FwZTpkZXNrY29sb3I9IiNkMWQxZDEiCiAgICAgc2hvd2dyaWQ9ImZhbHNlIgogICAgIGlua3NjYXBlOnpvb209IjcxLjYyNSIKICAgICBpbmtzY2FwZTpjeD0iNy44MTE1MTgzIgogICAgIGlua3NjYXBlOmN5PSI4IgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMjAzNiIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMzk3IgogICAgIGlua3NjYXBlOndpbmRvdy14PSI3IgogICAgIGlua3NjYXBlOndpbmRvdy15PSIzNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctbWF4aW1pemVkPSIxIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9InN2ZzE1OCIgLz4KICA8cGF0aAogICAgIGQ9Ik0xLjc1IDFBMS43NSAxLjc1IDAgMCAwIDAgMi43NXYxMC41QzAgMTQuMjE2Ljc4NCAxNSAxLjc1IDE1aDEyLjVBMS43NSAxLjc1IDAgMCAwIDE2IDEzLjI1di04LjVBMS43NSAxLjc1IDAgMCAwIDE0LjI1IDNINy41YS4yNS4yNSAwIDAgMS0uMi0uMWwtLjktMS4yQzYuMDcgMS4yNiA1LjU1IDEgNSAxSDEuNzVaIgogICAgIGlkPSJwYXRoMTU2IgogICAgIHN0eWxlPSJmaWxsOiM1NzU5NWE7ZmlsbC1vcGFjaXR5OjEiIC8+Cjwvc3ZnPgo=" alt="directory">
                     <div class="ellipsis">${safe(whats[i])}</div>
+                    ${homeUser ? `<img class="component_icon" src="${ICONS.HOME}" alt="" draggable="false">` : ""}
                 </a>
                 <ul></ul>
             </li>

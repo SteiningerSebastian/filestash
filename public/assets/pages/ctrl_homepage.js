@@ -6,6 +6,7 @@ import { forwardURLParams } from "../lib/path.js";
 import ctrlError from "./ctrl_error.js";
 
 import { getSession } from "../model/session.js";
+import { htlHomeUser, htlHomeDir } from "./filespage/helper.js";
 
 import "../components/loader.js";
 
@@ -33,7 +34,13 @@ export default function(render) {
         }),
         rxjs.tap(({ is_authenticated, home = "/" }) => {
             if (is_authenticated !== true) return navigate(forwardURLParams(toHref("/login"), ["share", "next"]));
-            return navigate(forwardURLParams(toHref(`/files${home}`), ["share"]));
+            // HTL: land users in their own home drive (their "H:"). The raw
+            // storage root is a wall of system shares they should never need
+            // to see; /Users/<username> is their working folder. Falls back
+            // to the backend reported home when no user name is derivable.
+            const homeUser = htlHomeUser(home);
+            const target = homeUser ? htlHomeDir(homeUser) : home;
+            return navigate(forwardURLParams(toHref(`/files${target}`), ["share"]));
         }),
         rxjs.catchError(ctrlError(render)),
     ));
