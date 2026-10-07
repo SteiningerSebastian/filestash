@@ -31,9 +31,9 @@ pipeline {
                         sed -i 's|plg_image_c|plg_image_golang|' server/plugin/index.go
                         make init
                         CGO_ENABLED=0 make build
+                        find ./public \\( -name '*.map' -o -name pdf.sandbox.js -o -path '*/vendor/*.html' -o -path '*/codemirror/demo' -o -path '*/codemirror/doc' -o -path '*/codemirror/src' -o -path '*/codemirror/theme' -o -path '*/codemirror/bin' \\) -prune -exec rm -rf {} +
                         CGO_ENABLED=0 GOARCH=amd64 go build -trimpath -ldflags="-s -w" --tags fts5 -o dist/release/filestash_linux_amd64.bin cmd/main.go
                         CGO_ENABLED=0 GOARCH=arm64 go build -trimpath -ldflags="-s -w" --tags fts5 -o dist/release/filestash_linux_arm64.bin cmd/main.go
-                        cd dist/release && sha256sum * > SHA256SUMS
                         '''
                     }
                 }
@@ -79,6 +79,16 @@ pipeline {
 
         stage("Release") {
             steps {
+                script {
+                    docker.image("alpine").inside() {
+                        sh '''
+                        wget -q -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.2.1/upx-5.2.1-amd64_linux.tar.xz
+                        echo "402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657  /tmp/upx.tar.xz" | sha256sum -c
+                        tar -xJf /tmp/upx.tar.xz -C /tmp
+                        /tmp/upx-5.2.1-amd64_linux/upx --ultra-brute dist/release/*.bin
+                        '''
+                    }
+                }
                 withCredentials([sshUserPrivateKey(credentialsId: "app-filestash-hal", keyFileVariable: "KEY", usernameVariable: "USER")]) {
                     sh 'scp -i "$KEY" dist/release/* "$USER@hal.filestash.app:/mnt/me-kerjean-pages/projects/filestash/downloads/latest/"'
                 }
