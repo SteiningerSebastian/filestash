@@ -13,34 +13,34 @@ ARG GIT_BRANCH=master
 # while the expensive apt-get layers in STAGE2 stay cached (their inputs
 # don't reference GIT_REV). Usage:
 #   docker build -t <tag> .                      # = GIT_REV unchanged -> cached clone
-#   docker build --build-arg GIT_REV=auto -t <tag> .   # ANY new value re-clones
+#   docker build --build-arg GIT_REV=<any-new-value> -t <tag> .   # fresh clone
 # or resolve the real head first for a reproducible pin:
-#   $rev = git ls-remote https://github.com/SteiningerSebastian/filestash refs/heads/master | ForEach-Object { $_.Split("`t")[0] }
+#   $rev = (git ls-remote https://github.com/SteiningerSebastian/filestash refs/heads/master).Split("`t")[0]
 #   docker build --build-arg GIT_REV=$rev -t <tag> .
 ARG GIT_REV=initial
-# HTL: keep the clone AND the go module download in the SAME cheap layer and
-# reuse a shared cache mount for go modules, so a cache-busted rebuild pays
-# network cost only for the repo, not for the modules.
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} filestash && \
-    git -C filestash rev-parse --short HEAD && test "${GIT_REV}" != "noop" && echo "clone: ${GIT_REV}" || echo "clone: head used"
+RUN git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} filestash && \
+    git -C filestash rev-parse --short HEAD
 
 # STEP2: BUILD BACKEND
 FROM golang:1.26-trixie AS builder_backend
+# HTL: the fat apt installs live BEFORE the source COPY so re-cloning the
+# repo (new GIT_REV) never re-runs them - their layers are children of the
+# base image, not of the changed COPY.
 WORKDIR /home/filestash/
-COPY --from=builder_prepare /home/filestash/ .
 RUN apt-get update > /dev/null && \
     apt-get install -y curl make > /dev/null 2>&1 && \
     apt-get install -y libjpeg-dev libtiff-dev libpng-dev libwebp-dev libraw-dev libheif-dev libgif-dev libvips-dev > /dev/null 2>&1 && \
     apt-get install -y libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libswresample-dev libswscale-dev libavutil-dev > /dev/null 2>&1
 # HTL: `make init` (go mod download) in its OWN layer with a cache mount, so
 # a cache-busted rebuild (new GIT_REV -> fresh clone -> COPY layer changes)
-# re-downloads ZERO go modules; only `make build` re-runs.
+# re-downloads ZERO go modules. Module + build cache are persistent mounts,
+# they survive every rebuild (this is the same trick as a buildkit --no-cache
+# on the source layers only).
 RUN --mount=type=cache,target=/go/pkg/mod \
     make init
-# HTL: build layer consumes GIT_REV -> it re-runs on every cache bust while
-# the apt layers and the go-module layer above stay cached.
-ARG GIT_REV=initial
+COPY --from=builder_prepare /home/filestash/filestash/ .
+# HTL: build layer depends on the fresh source -> re-runs on every cache
+# bust while apt layers & module downloads above stay cached.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     make build

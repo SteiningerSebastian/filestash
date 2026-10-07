@@ -9,8 +9,9 @@ import { createLoader } from "../../components/loader.js";
 import t from "../../locales/index.js";
 import ctrlError from "../ctrl_error.js";
 
-import { currentPath, sort, isMobile, isAlreadyFocused, htlFilterDirectory } from "./helper.js";
+import { currentPath, sort, isMobile, isAlreadyFocused, htlFilterDirectory, htlHomeUser } from "./helper.js";
 import { createThing } from "./thing.js";
+import { getSession } from "../../model/session.js";
 import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
 import { getState$ } from "./state_config.js";
 import { ls, search, searchUrlParam } from "./model_files.js";
@@ -109,6 +110,24 @@ export default async function(render) {
             }
             if (!search) files = sort(files, rest["sort"], rest["order"]);
             return rxjs.of({ ...rest, files, search });
+        }),
+        // HTL: on the ROOT page, prepend one normal folder named after the
+        // user which navigates to their home drive ("H:"). Same createThing
+        // pipeline as every other entry -> looks & behaves like the real
+        // thing (grid + list mode, selection, etc). The username comes from
+        // the session home; when unavailable (eg. Guest), nothing is added.
+        rxjs.mergeMap(async(obj) => {
+            if (currentPath() !== "/" || obj.search) return obj;
+            let home = "";
+            try {
+                const session = await getSession().pipe(rxjs.first()).toPromise();
+                home = (session || {}).home || "";
+            } catch (err) {}
+            const username = htlHomeUser(home);
+            if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
+            const existing = obj.files.some((f) => f.name === username);
+            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
+            return { ...obj, files };
         }),
         rxjs.map((data) => ({ ...data, count: count++ })),
         removeLoader,

@@ -4,7 +4,8 @@ import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
 import cache from "../pages/filespage/cache.js";
-import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
+import { getSession } from "../model/session.js";
+import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser } from "../pages/filespage/helper.js";
 import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
 import { hooks, mv as mv$ } from "../pages/filespage/model_files.js";
 import ctrlError from "../pages/ctrl_error.js";
@@ -15,27 +16,8 @@ const ICONS = {
 };
 
 export default async function ctrlNavigationPane(render, { $sidebar, path }) {
-    // feature (HTL): quick link to the user's own home drive (their "H:").
-    // The storage exposes /Users/<username>; the shortcut is a fake folder
-    // named after the current user, sitting right under the search box and
-    // simply navigating to that directory on click. Skipped silently when
-    // the user name can't be mined from where we are (shares, embeds, ...).
-    const homeUser = htlHomeUser(path);
-    if (homeUser) {
-        const home = htlHomeDir(homeUser);
-        const $home = createElement(`
-            <ul class="htl-quickshare">
-                <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
-                    <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
-                        <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
-                        <div class="ellipsis">${safe(homeUser)}</div>
-                    </a>
-                </li>
-            </ul>
-        `);
-        const $holder = qs($sidebar, ".component_sidebar > div");
-        $holder.insertBefore($home, qs($holder, `[data-bind="your-files"]`));
-    }
+    // feature (HTL): home-drive quick link at the very top of the sidebar.
+    installHomeShortcut($sidebar);
 
     // feature: init dom
     const $fs = document.createDocumentFragment();
@@ -121,6 +103,46 @@ const mv = (from, to) => withVirtualLayer(
     mv$(from, to),
     mvVL(from, to),
 );
+
+/* HTL: home-drive ("H:") quick link, pinned above "Your Files".
+ * - EXACTLY the same li > a > img + ellipsis structure as the generated
+ *   folder rows in _createListOfFiles -> looks/behaves like a normal folder.
+ * - IDEMPOTENT: replace-if-exists, never stack (the preview build stacked a
+ *   fresh copy on every navigation — screenshot showed 4x "9steiningers").
+ * - The username comes from the session (backend "home"), so the link also
+ *   exists on the ROOT page where no /Users path has been visited yet.
+ * - aria-selected is NEVER set on it (that's what made it stay highlighted) —
+ *   the highlight logic below only matches rows inside [data-path].
+ * - Pure navigation to /files/Users/<username>; server authz stays the gate.
+ */
+async function installHomeShortcut($sidebar) {
+    let username = "";
+    try {
+        const session = await getSession().pipe(rxjs.first()).toPromise();
+        const home = (session || {}).home || "";
+        // home is either "/Users/<username>/" (samba fork) or something else;
+        // derive the user name, fall back silently when it isn't shaped so.
+        username = htlHomeUser(home) ||
+            (home.split("/").filter((c) => c !== "")[0] || "");
+    } catch (err) {}
+    if (!username) return;
+    const home = "/Users/" + username + "/";
+    const $holder = qs($sidebar, ".component_sidebar > div");
+    if (!$holder) return;
+    const $previous = qs($holder, ".htl-quickshare");
+    if ($previous) $previous.remove();
+    const $home = createElement(`
+        <ul class="htl-quickshare">
+            <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
+                <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
+                    <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
+                    <div class="ellipsis">${safe(username)}</div>
+                </a>
+            </li>
+        </ul>
+    `);
+    $holder.insertBefore($home, qs($holder, `[data-bind="your-files"]`));
+}
 
 async function _createListOfFiles(path, { basename = null, dirname = null }) {
     const MAX_DISPLAY = 100;

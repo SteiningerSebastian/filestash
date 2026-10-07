@@ -41,6 +41,9 @@ type Samba struct {
 	share    map[string]*smb2.Share
 	inflight *atomic.Int32
 	session  *smb2.Session
+	// HTL (fork): the login username travels through the session; keep a
+	// copy so Home() can point each user at their own folder under /Users.
+	username string
 }
 
 func (smb Samba) Init(params map[string]string, app *App) (IBackend, error) {
@@ -65,6 +68,7 @@ func (smb Samba) Init(params map[string]string, app *App) (IBackend, error) {
 	if params["port"] == "" {
 		params["port"] = "445"
 	}
+	smb.username = strings.TrimSpace(params["username"])
 	if c := SambaCache.Get(params); c != nil {
 		return c.(*Samba), nil
 	}
@@ -115,6 +119,23 @@ func (smb Samba) Init(params map[string]string, app *App) (IBackend, error) {
 	}
 	SambaCache.Set(params, &smb)
 	return &smb, nil
+}
+
+// Home (HTL fork): every user's working folder lives under /Users/<username>
+// on the fileserver (their "H:" drive). Reporting it as the session home
+// makes the webapp land there right after login ("/" would be a wall of
+// system shares nobody should browse). The value is validated against the
+// REAL filesystem so a mismatched username (eg. someone typing the domain
+// form "DOMAIN\user") simply falls back to the storage root.
+func (smb Samba) Home() (string, error) {
+	if smb.username == "" || smb.username == "Guest" || strings.Contains(smb.username, "\\") {
+		return "", ErrNotFound
+	}
+	home := "/Users/" + smb.username + "/"
+	if _, err := smb.Stat(home); err != nil {
+		return "", err
+	}
+	return home, nil
 }
 
 func (smb Samba) LoginForm() Form {
