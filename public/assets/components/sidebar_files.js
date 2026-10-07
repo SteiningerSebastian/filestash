@@ -105,53 +105,61 @@ const mv = (from, to) => withVirtualLayer(
 );
 
 /* HTL: home-drive ("H:") quick link, pinned above "Your Files".
- * - EXACTLY the same li > a > img + ellipsis structure as the generated
- *   folder rows in _createListOfFiles -> looks/behaves like a normal folder.
- * - IDEMPOTENT: replace-if-exists, never stack (the preview build stacked a
- *   fresh copy on every navigation — screenshot showed 4x "9steiningers").
+ * - Lives in its own slot: the holder's children are H3 / [your-files] /
+ *   [your-tags]; we insert a stable sibling right before [your-files]. That
+ *   zone is NEVER touched by the nav-pane render pipeline (it only swaps
+ *   ULs INSIDE [data-bind="your-files"]), so no insertBefore across parents.
+ * - IDEMPOTENT: replace-if-exists, never stacks between navigations (an
+ *   earlier version stacked a fresh copy on every navigation).
  * - The username comes from the session (backend "home"), so the link also
  *   exists on the ROOT page where no /Users path has been visited yet.
- * - aria-selected is NEVER set on it (that's what made it stay highlighted) —
- *   the highlight logic below only matches rows inside [data-path].
+ * - Never gets aria-selected (that's what made it stay highlighted).
  * - Pure navigation to /files/Users/<username>; server authz stays the gate.
+ * - Plain querySelector: the shared qs() helper THROWS NotFoundError on
+ *   empty matches (first-install is the normal empty case).
+ * - withInstantLoad's cache replay can swap the holder's children WHILE the
+ *   session fetch is inflight ("insertBefore: not a child of this node"), so
+ *   refs are re-validated at insert time and the whole install retries a
+ *   few times instead of dying on the first race.
  */
-async function installHomeShortcut($sidebar) {
-    let username = "";
-    try {
-        const session = await getSession().pipe(rxjs.first()).toPromise();
-        const home = (session || {}).home || "";
-        // home is either "/Users/<username>/" (samba fork) or something else;
-        // derive the user name, fall back silently when it isn't shaped so.
-        username = htlHomeUser(home) ||
-            (home.split("/").filter((c) => c !== "")[0] || "");
-    } catch (err) {}
-    if (!username) return;
-    const home = "/Users/" + username + "/";
-    // $sidebar IS the .component_sidebar element (sidebar.js renders it), so
-    // query the inner wrapper relative to it — NOT ".component_sidebar > div"
-    // (that selector searches for a NESTED .component_sidebar and always
-    // returned null -> the shortcut silently never appeared).
-    // NOTE: plain querySelector everywhere here — the shared qs() helper
-    // THROWS NotFoundError on empty matches, which on the FIRST install is
-    // the normal case (nothing to replace yet) and crashed this whole
-    // function with "undefined node for selector '.htl-quickshare'".
+function installHomeShortcut($sidebar, attemptsLeft = 10) {
     const $holder = $sidebar.querySelector(":scope > div");
-    if (!$holder) return;
-    const $previous = $holder.querySelector(".htl-quickshare");
-    if ($previous) $previous.remove();
-    const $yourFiles = $holder.querySelector('[data-bind="your-files"]');
-    if (!$yourFiles) return;
-    const $home = createElement(`
-        <ul class="htl-quickshare">
-            <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
-                <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
-                    <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
-                    <div class="ellipsis">${safe(username)}</div>
-                </a>
-            </li>
-        </ul>
-    `);
-    $holder.insertBefore($home, $yourFiles);
+    const $yourFiles = $holder ? $holder.querySelector('[data-bind="your-files"]') : null;
+    if (!$holder || !$yourFiles || $yourFiles.parentElement !== $holder) {
+        // lists not rendered yet (skeleton phase): retry shortly
+        if (attemptsLeft > 0) window.setTimeout(() => installHomeShortcut($sidebar, attemptsLeft - 1), 150);
+        return;
+    }
+    getSession().pipe(rxjs.first()).subscribe((session) => {
+        const home0 = (session || {}).home || "";
+        const username = htlHomeUser(home0) ||
+            (home0.split("/").filter((c) => c !== "")[0] || "");
+        if (!username) return;
+        // re-validate refs INSIDE the callback: the async gap is exactly
+        // where withInstantLoad's cache-replay swaps the DOM out
+        const $holderNow = $sidebar.querySelector(":scope > div");
+        const $yourFilesNow = $holderNow
+            ? $holderNow.querySelector('[data-bind="your-files"]')
+            : null;
+        if (!$holderNow || !$yourFilesNow || $yourFilesNow.parentElement !== $holderNow) {
+            if (attemptsLeft > 0) window.setTimeout(() => installHomeShortcut($sidebar, attemptsLeft - 1), 150);
+            return;
+        }
+        const home = "/Users/" + username + "/";
+        const $previous = $holderNow.querySelector(".htl-quickshare");
+        if ($previous) $previous.remove();
+        const $home = createElement(`
+            <ul class="htl-quickshare">
+                <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
+                    <a data-link href="${safe(forwardURLParams(toHref("/files" + encodeURIComponent(home).replaceAll("%2F", "/")), ["share", "canary"]))}" draggable="false" aria-selected="false">
+                        <img class="component_icon" src="${ICONS.HOME}" alt="directory" draggable="false">
+                        <div class="ellipsis">${safe(username)}</div>
+                    </a>
+                </li>
+            </ul>
+        `);
+        $holderNow.insertBefore($home, $yourFilesNow);
+    }, () => {}); // storage-denied / 401: no shortcut, no unhandled rejection
 }
 
 async function _createListOfFiles(path, { basename = null, dirname = null }) {
