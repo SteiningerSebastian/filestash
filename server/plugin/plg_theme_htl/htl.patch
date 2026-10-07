@@ -1,5 +1,5 @@
 diff --git a/public/assets/components/sidebar_files.js b/public/assets/components/sidebar_files.js
-index 2df4b0af..cda4eed4 100644
+index 2df4b0af..053e497a 100644
 --- a/public/assets/components/sidebar_files.js
 +++ b/public/assets/components/sidebar_files.js
 @@ -4,12 +4,21 @@ import { toHref } from "../lib/skeleton/router.js";
@@ -25,7 +25,7 @@ index 2df4b0af..cda4eed4 100644
      // feature: init dom
      const $fs = document.createDocumentFragment();
      const dirname = path.replace(new RegExp("[^\/]*$"), "");
-@@ -95,6 +104,46 @@ const mv = (from, to) => withVirtualLayer(
+@@ -95,6 +104,50 @@ const mv = (from, to) => withVirtualLayer(
      mvVL(from, to),
  );
  
@@ -52,7 +52,11 @@ index 2df4b0af..cda4eed4 100644
 +    } catch (err) {}
 +    if (!username) return;
 +    const home = "/Users/" + username + "/";
-+    const $holder = qs($sidebar, ".component_sidebar > div");
++    // $sidebar IS the .component_sidebar element (sidebar.js renders it), so
++    // query the inner wrapper relative to it ??? NOT ".component_sidebar > div"
++    // (that selector searches for a NESTED .component_sidebar and always
++    // returned null -> the shortcut silently never appeared).
++    const $holder = qs($sidebar, ":scope > div");
 +    if (!$holder) return;
 +    const $previous = qs($holder, ".htl-quickshare");
 +    if ($previous) $previous.remove();
@@ -72,7 +76,7 @@ index 2df4b0af..cda4eed4 100644
  async function _createListOfFiles(path, { basename = null, dirname = null }) {
      const MAX_DISPLAY = 100;
      const r = await cache().get(path);
-@@ -102,6 +151,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -102,6 +155,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
          ? (basename ? [basename] : [])
          : r.files
              .filter(({ type, name }) => type === "directory" && name[0] !== ".")
@@ -80,7 +84,7 @@ index 2df4b0af..cda4eed4 100644
              .map(({ name }) => name)
              .sort((a, b) => a.localeCompare(b));
  
-@@ -110,11 +160,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -110,11 +164,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
      const $ul = document.createElement("ul");
      for (let i=0; i<whats.length; i++) {
          const currpath = path + whats[i] + "/";
@@ -123,7 +127,7 @@ index 274ec67c..a526e7f6 100644
          rxjs.catchError(ctrlError(render)),
      ));
 diff --git a/public/assets/pages/filespage/ctrl_filesystem.js b/public/assets/pages/filespage/ctrl_filesystem.js
-index 4da434d8..d2e9eff8 100644
+index 4da434d8..b8dc8c41 100644
 --- a/public/assets/pages/filespage/ctrl_filesystem.js
 +++ b/public/assets/pages/filespage/ctrl_filesystem.js
 @@ -9,8 +9,9 @@ import { createLoader } from "../../components/loader.js";
@@ -137,7 +141,7 @@ index 4da434d8..d2e9eff8 100644
  import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
  import { getState$ } from "./state_config.js";
  import { ls, search, searchUrlParam } from "./model_files.js";
-@@ -98,9 +99,36 @@ export default async function(render) {
+@@ -98,9 +99,45 @@ export default async function(render) {
          )),
          rxjs.mergeMap(({ show_hidden, files, search, ...rest }) => {
              if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
@@ -168,7 +172,16 @@ index 4da434d8..d2e9eff8 100644
 +            const username = htlHomeUser(home);
 +            if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
 +            const existing = obj.files.some((f) => f.name === username);
-+            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
++            const files = existing ? obj.files : [{
++                // path is EXPLICIT: createLink() builds the link from file.path
++                // when present - otherwise it glues currentPath()+name and the
++                // entry would point at /<username>/ instead of /Users/<username>/
++                name: username,
++                type: "directory",
++                path: "/Users/" + username + "/",
++                time: 0,
++                size: 0,
++            }].concat(obj.files);
 +            return { ...obj, files };
 +        }),
          rxjs.map((data) => ({ ...data, count: count++ })),

@@ -18,8 +18,8 @@ ARG GIT_BRANCH=master
 #   $rev = (git ls-remote https://github.com/SteiningerSebastian/filestash refs/heads/master).Split("`t")[0]
 #   docker build --build-arg GIT_REV=$rev -t <tag> .
 ARG GIT_REV=initial
-RUN git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} filestash && \
-    git -C filestash rev-parse --short HEAD
+RUN git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} /home/checkout && \
+    git -C /home/checkout rev-parse --short HEAD
 
 # STEP2: BUILD BACKEND
 FROM golang:1.26-trixie AS builder_backend
@@ -27,20 +27,18 @@ FROM golang:1.26-trixie AS builder_backend
 # repo (new GIT_REV) never re-runs them - their layers are children of the
 # base image, not of the changed COPY.
 WORKDIR /home/filestash/
+COPY --from=builder_prepare /home/checkout/ .
 RUN apt-get update > /dev/null && \
     apt-get install -y curl make > /dev/null 2>&1 && \
     apt-get install -y libjpeg-dev libtiff-dev libpng-dev libwebp-dev libraw-dev libheif-dev libgif-dev libvips-dev > /dev/null 2>&1 && \
     apt-get install -y libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libswresample-dev libswscale-dev libavutil-dev > /dev/null 2>&1
 # HTL: `make init` (go mod download) in its OWN layer with a cache mount, so
-# a cache-busted rebuild (new GIT_REV -> fresh clone -> COPY layer changes)
-# re-downloads ZERO go modules. Module + build cache are persistent mounts,
-# they survive every rebuild (this is the same trick as a buildkit --no-cache
-# on the source layers only).
+# a cache-busted rebuild re-runs it AFTER a fresh clone but re-downloads ZERO
+# go modules (module + build caches are persistent BuildKit cache mounts).
 RUN --mount=type=cache,target=/go/pkg/mod \
     make init
-COPY --from=builder_prepare /home/filestash/filestash/ .
 # HTL: build layer depends on the fresh source -> re-runs on every cache
-# bust while apt layers & module downloads above stay cached.
+# bust while apt & module layers above stay cached.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     make build

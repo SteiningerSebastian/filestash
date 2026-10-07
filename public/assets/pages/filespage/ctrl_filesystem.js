@@ -126,7 +126,16 @@ export default async function(render) {
             const username = htlHomeUser(home);
             if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
             const existing = obj.files.some((f) => f.name === username);
-            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
+            const files = existing ? obj.files : [{
+                // path is EXPLICIT: createLink() builds the link from file.path
+                // when present - otherwise it glues currentPath()+name and the
+                // entry would point at /<username>/ instead of /Users/<username>/
+                name: username,
+                type: "directory",
+                path: "/Users/" + username + "/",
+                time: 0,
+                size: 0,
+            }].concat(obj.files);
             return { ...obj, files };
         }),
         rxjs.map((data) => ({ ...data, count: count++ })),

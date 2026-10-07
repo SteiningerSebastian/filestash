@@ -127,7 +127,11 @@ async function installHomeShortcut($sidebar) {
     } catch (err) {}
     if (!username) return;
     const home = "/Users/" + username + "/";
-    const $holder = qs($sidebar, ".component_sidebar > div");
+    // $sidebar IS the .component_sidebar element (sidebar.js renders it), so
+    // query the inner wrapper relative to it — NOT ".component_sidebar > div"
+    // (that selector searches for a NESTED .component_sidebar and always
+    // returned null -> the shortcut silently never appeared).
+    const $holder = qs($sidebar, ":scope > div");
     if (!$holder) return;
     const $previous = qs($holder, ".htl-quickshare");
     if ($previous) $previous.remove();
