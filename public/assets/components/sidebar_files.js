@@ -15,10 +15,6 @@ const ICONS = {
 };
 
 export default async function ctrlNavigationPane(render, { $sidebar, path }) {
-    // feature (HTL): the home-drive quick link is HARDCODED in sidebar.js's
-    // own template now (race-free, part of the first paint) — nothing to do
-    // here anymore.
-
     // feature: init dom
     const $fs = document.createDocumentFragment();
     const dirname = path.replace(new RegExp("[^\/]*$"), "");
@@ -79,7 +75,12 @@ export default async function ctrlNavigationPane(render, { $sidebar, path }) {
     } catch (err) {}
 
     // feature: quick search
-    effect(rxjs.fromEvent(qs($sidebar, "h3 input"), "keydown").pipe(
+    // HTL: the "Your Files" search input was replaced by the hardcoded school
+    // logo (sidebar.js) — this handler stays for upstream parity but is a
+    // no-op unless such an input exists again (plain querySelector, since the
+    // shared qs() helper THROWS on empty matches).
+    const $searchInput = $sidebar.querySelector("h3 input");
+    if ($searchInput) effect(rxjs.fromEvent($searchInput, "keydown").pipe(
         rxjs.debounceTime(200),
         rxjs.tap((e) => {
             const inputValue = e.target.value.toLowerCase();

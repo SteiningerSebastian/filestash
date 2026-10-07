@@ -526,3 +526,65 @@ body #app .component_sidebar li[data-htl-home="true"] > a div.ellipsis {
 body #app .component_thing[data-htl-home="true"] .component_filename {
     font-weight: 600;
 }
+
+/* ============ HTL FORK: SIDEBAR BRAND (logo replaces the search h3) ============ */
+body #app .component_sidebar h3.htl-sidebar-brand {
+    text-transform: none;
+    margin-top: 8px;
+    padding-left: 15px;
+    opacity: 1;
+}
+body #app .component_sidebar h3.htl-sidebar-brand .htl-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding: 4px 0;
+}
+body #app .component_sidebar h3.htl-sidebar-brand .htl-brand:hover {
+    color: var(--emphasis);
+}
+body #app .component_sidebar h3.htl-sidebar-brand .htl-brand-logo {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+}
+body #app .component_sidebar h3.htl-sidebar-brand .htl-brand-name {
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+
+/* ============ HTL FORK: HOME BUTTON below the directory list ============
+ * Aligns with the generated folder rows: same left padding/margins as the
+ * sidebar ul (5px) + li (5px) + a (10px) chain -> margin-left 5px overall. */
+body #app .component_sidebar ul.htl-quickshare {
+    margin: 10px 0 25px 5px;
+    padding: 0;
+    list-style-type: none;
+}
+body #app .component_sidebar ul.htl-quickshare li {
+    padding-left: 5px;
+    padding-right: 2px;
+}
+body #app .component_sidebar ul.htl-quickshare a {
+    display: flex;
+    align-items: center;
+    padding: 5px 5px 5px 5px;
+    width: 100%;
+    box-sizing: border-box;
+    letter-spacing: -0.2px;
+    color: var(--emphasis);
+    font-weight: 600;
+}
+body #app .component_sidebar ul.htl-quickshare a .component_icon {
+    width: 16px;
+    margin-right: 2px;
+}
+body.touch-no #app .component_sidebar ul.htl-quickshare a:hover,
+body #app .component_sidebar ul.htl-quickshare a[aria-selected="true"] {
+    background: var(--border);
+    border-radius: 3px;
+}

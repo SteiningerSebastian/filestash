@@ -1,16 +1,17 @@
 diff --git a/public/assets/components/sidebar.js b/public/assets/components/sidebar.js
-index 76d20e3e..8c1460fd 100644
+index 76d20e3e..ba0c840e 100644
 --- a/public/assets/components/sidebar.js
 +++ b/public/assets/components/sidebar.js
-@@ -1,11 +1,14 @@
- import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
+@@ -1,29 +1,70 @@
+-import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
++???import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
 +import { toHref } from "../lib/skeleton/router.js";
  import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
 -import { qs } from "../lib/dom.js";
 +import { qs, safe } from "../lib/dom.js";
  import { settingsGet, settingsSave } from "../lib/store.js";
  import { loadCSS } from "../helpers/loader.js";
- import t from "../locales/index.js";
+-import t from "../locales/index.js";
  import { getCurrentPath } from "../pages/viewerpage/common.js";
  import { generateSkeleton } from "./skeleton.js";
 +import { getSession } from "../model/session.js";
@@ -18,15 +19,35 @@ index 76d20e3e..8c1460fd 100644
  
  import ctrlNavigationPane from "./sidebar_files.js";
  import ctrlTagPane from "./sidebar_tags.js";
-@@ -15,6 +18,20 @@ export default async function ctrlSidebar(render, {}) {
+ 
++// HTL (fork): teal home-folder icon for the hardcoded home shortcut
++const HTL_HOME_ICON = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20fill='%23009883'%20d='M1.5%202A1.5%201.5%200%200%200%200%203.5V12.5A1.5%201.5%200%200%200%201.5%2014H14.5A1.5%201.5%200%200%200%2016%2012.5V5.5A1.5%201.5%200%200%200%2014.5%204H8.2L6.9%202.4A1%201%200%200%200%206.2%202Z'/%3E%3C/svg%3E";
++
++// HTL (fork): school logo, hardcoded as inline HTML (user request).
++// Teal "tower" mark matching the www.htl-neufelden.at color tokens + name.
++const HTL_LOGO_HTML = `
++    <a class="htl-brand" href="https://www.htl-neufelden.at" target="_blank" rel="noopener" title="HTL Neufelden">
++        <svg class="htl-brand-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
++            <rect x="13" y="2" width="6" height="16" rx="1" fill="#009883"></rect>
++            <rect x="5" y="8" width="6" height="10" rx="1" fill="#65d1c7"></rect>
++            <rect x="21" y="8" width="6" height="10" rx="1" fill="#65d1c7"></rect>
++            <rect x="2" y="20" width="28" height="4" rx="1" fill="#009883"></rect>
++            <rect x="14" y="26" width="4" height="5" rx="1" fill="#494949"></rect>
++        </svg>
++        <span class="htl-brand-name">HTL Neufelden</span>
++    </a>
++`;
++
+ export default async function ctrlSidebar(render, {}) {
+     if (new URL(location.toString()).searchParams.get("nav") === "false") return;
      else if (window.self !== window.top) return;
      else if (document.body.clientWidth < 850) return;
  
 +    // feature (HTL): home-drive ("H:") quick link, HARDCODED in this template
-+    // (part of the DOM from the first paint ??? nothing can race or wipe it).
-+    // Label comes from the session home (/Users/<username>); click resolves
-+    // the target THEN -> always /files/Users/<username>/. Hidden entirely
-+    // when no username is derivable (eg. unauthenticated).
++    // (part of the DOM from the first paint - nothing can race or wipe it;
++    // an injected/reactive version kept randomly resurrecting duplicates).
++    // Label comes from the session home (/Users/<username>); hidden entirely
++    // when no username is derivable. Sits BELOW the directory list.
 +    let username = "";
 +    try {
 +        const session = await getSession().pipe(rxjs.first()).toPromise();
@@ -34,33 +55,35 @@ index 76d20e3e..8c1460fd 100644
 +        username = htlHomeUser(home) || (home.split("/").filter((c) => c !== "")[0] || "");
 +    } catch (err) {}
 +    const homeHref = username ? toHref("/files/Users/" + encodeURIComponent(username).replaceAll("%2F", "/")) : null;
-+    const homeIcon = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20fill='%23009883'%20d='M1.5%202A1.5%201.5%200%200%200%200%203.5V12.5A1.5%201.5%200%200%200%201.5%2014H14.5A1.5%201.5%200%200%200%2016%2012.5V5.5A1.5%201.5%200%200%200%2014.5%204H8.2L6.9%202.4A1%201%200%200%200%206.2%202Z'/%3E%3C/svg%3E";
++    const homeButton = homeHref ? `
++        <ul class="htl-quickshare">
++            <li class="no-select">
++                <a data-link href="${homeHref}" draggable="false" aria-selected="false" title="/Users/${safe(username)}/">
++                    <img class="component_icon" src="${HTL_HOME_ICON}" alt="directory" draggable="false">
++                    <div class="ellipsis">${safe(username)}</div>
++                </a>
++            </li>
++        </ul>` : "";
 +
      const $sidebar = render(createElement(`
          <div class="component_sidebar"><div>
-             <h3 class="no-select">
-@@ -23,7 +40,15 @@ export default async function ctrlSidebar(render, {}) {
+-            <h3 class="no-select">
+-                <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgYXJpYS1oaWRkZW49InRydWUiCiAgIGZvY3VzYWJsZT0iZmFsc2UiCiAgIHJvbGU9ImltZyIKICAgY2xhc3M9Im9jdGljb24gb2N0aWNvbi1zaWRlYmFyLWV4cGFuZCIKICAgdmlld0JveD0iMCAwIDE2IDE2IgogICB3aWR0aD0iMTYiCiAgIGhlaWdodD0iMTYiCiAgIGZpbGw9ImN1cnJlbnRDb2xvciIKICAgc3R5bGU9ImRpc3BsYXk6IGlubGluZS1ibG9jazsgdXNlci1zZWxlY3Q6IG5vbmU7IHZlcnRpY2FsLWFsaWduOiB0ZXh0LWJvdHRvbTsgb3ZlcmZsb3c6IHZpc2libGU7IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmc3MjI3IgogICBzb2RpcG9kaTpkb2NuYW1lPSJnaXRodWJmb2xkLnN2ZyIKICAgaW5rc2NhcGU6dmVyc2lvbj0iMS4yLjIgKGIwYTg0ODY1NDEsIDIwMjItMTItMDEpIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM3MjMxIiAvPgogIDxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3NzIyOSIKICAgICBwYWdlY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyY29sb3I9IiMwMDAwMDAiCiAgICAgYm9yZGVyb3BhY2l0eT0iMC4yNSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMiIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMC4wIgogICAgIGlua3NjYXBlOnBhZ2VjaGVja2VyYm9hcmQ9IjAiCiAgICAgaW5rc2NhcGU6ZGVza2NvbG9yPSIjZDFkMWQxIgogICAgIHNob3dncmlkPSJmYWxzZSIKICAgICBpbmtzY2FwZTp6b29tPSIxNC43NSIKICAgICBpbmtzY2FwZTpjeD0iNC4yMDMzODk4IgogICAgIGlua3NjYXBlOmN5PSI4IgogICAgIGlua3NjYXBlOndpbmRvdy13aWR0aD0iMTgxNyIKICAgICBpbmtzY2FwZTp3aW5kb3ctaGVpZ2h0PSIxMzk3IgogICAgIGlua3NjYXBlOndpbmRvdy14PSI3IgogICAgIGlua3NjYXBlOndpbmRvdy15PSIzNCIKICAgICBpbmtzY2FwZTp3aW5kb3ctbWF4aW1pemVkPSIxIgogICAgIGlua3NjYXBlOmN1cnJlbnQtbGF5ZXI9InN2ZzcyMjciIC8+CiAgPHBhdGgKICAgICBkPSJtNC4xNzcgNy44MjMgMi4zOTYtMi4zOTZBLjI1LjI1IDAgMCAxIDcgNS42MDR2NC43OTJhLjI1LjI1IDAgMCAxLS40MjcuMTc3TDQuMTc3IDguMTc3YS4yNS4yNSAwIDAgMSAwLS4zNTRaIgogICAgIGlkPSJwYXRoNzIyMyIKICAgICBzdHlsZT0iZmlsbDojNTc1OTVhO2ZpbGwtb3BhY2l0eToxIiAvPgogIDxwYXRoCiAgICAgZD0iTTAgMS43NUMwIC43ODQuNzg0IDAgMS43NSAwaDEyLjVDMTUuMjE2IDAgMTYgLjc4NCAxNiAxLjc1djEyLjVBMS43NSAxLjc1IDAgMCAxIDE0LjI1IDE2SDEuNzVBMS43NSAxLjc1IDAgMCAxIDAgMTQuMjVabTEuNzUtLjI1YS4yNS4yNSAwIDAgMC0uMjUuMjV2MTIuNWMwIC4xMzguMTEyLjI1LjI1LjI1SDkuNXYtMTNabTEyLjUgMTNhLjI1LjI1IDAgMCAwIC4yNS0uMjVWMS43NWEuMjUuMjUgMCAwIDAtLjI1LS4yNUgxMXYxM1oiCiAgICAgaWQ9InBhdGg3MjI1IgogICAgIHN0eWxlPSJmaWxsOiM1NzU5NWE7ZmlsbC1vcGFjaXR5OjEiIC8+Cjwvc3ZnPgo=" alt="close" class="pointer">
+-                <input type="text" placeholder="${t("Your Files")}" />
++            <h3 class="no-select htl-sidebar-brand">${HTL_LOGO_HTML}
              </h3>
              <div data-bind="your-files">
                  ${generateSkeleton(2)}
--            </div>
-+            </div>${homeHref ? `
-+            <ul class="htl-quickshare">
-+                <li class="no-select">
-+                    <a data-link href="${homeHref}" draggable="false" aria-selected="false" title="/Users/${safe(username)}/">
-+                        <img class="component_icon" src="${homeIcon}" alt="directory" draggable="false">
-+                        <div class="ellipsis">${safe(username)}</div>
-+                    </a>
-+                </li>
-+            </ul>` : ""}
+             </div>
++            ${homeButton}
              <div data-bind="your-tags">
                  ${generateSkeleton(2)}
              </div>
 diff --git a/public/assets/components/sidebar_files.js b/public/assets/components/sidebar_files.js
-index 2df4b0af..a8028fb5 100644
+index 2df4b0af..40babe53 100644
 --- a/public/assets/components/sidebar_files.js
 +++ b/public/assets/components/sidebar_files.js
-@@ -4,12 +4,21 @@ import { toHref } from "../lib/skeleton/router.js";
+@@ -4,11 +4,16 @@ import { toHref } from "../lib/skeleton/router.js";
  import { qs, qsa, safe } from "../lib/dom.js";
  import { forwardURLParams } from "../lib/path.js";
  import cache from "../pages/filespage/cache.js";
@@ -76,14 +99,23 @@ index 2df4b0af..a8028fb5 100644
 +};
 +
  export default async function ctrlNavigationPane(render, { $sidebar, path }) {
-+    // feature (HTL): the home-drive quick link is HARDCODED in sidebar.js's
-+    // own template now (race-free, part of the first paint) ??? nothing to do
-+    // here anymore.
-+
      // feature: init dom
      const $fs = document.createDocumentFragment();
-     const dirname = path.replace(new RegExp("[^\/]*$"), "");
-@@ -102,6 +111,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -70,7 +75,12 @@ export default async function ctrlNavigationPane(render, { $sidebar, path }) {
+     } catch (err) {}
+ 
+     // feature: quick search
+-    effect(rxjs.fromEvent(qs($sidebar, "h3 input"), "keydown").pipe(
++    // HTL: the "Your Files" search input was replaced by the hardcoded school
++    // logo (sidebar.js) ??? this handler stays for upstream parity but is a
++    // no-op unless such an input exists again (plain querySelector, since the
++    // shared qs() helper THROWS on empty matches).
++    const $searchInput = $sidebar.querySelector("h3 input");
++    if ($searchInput) effect(rxjs.fromEvent($searchInput, "keydown").pipe(
+         rxjs.debounceTime(200),
+         rxjs.tap((e) => {
+             const inputValue = e.target.value.toLowerCase();
+@@ -102,6 +112,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
          ? (basename ? [basename] : [])
          : r.files
              .filter(({ type, name }) => type === "directory" && name[0] !== ".")
@@ -91,7 +123,7 @@ index 2df4b0af..a8028fb5 100644
              .map(({ name }) => name)
              .sort((a, b) => a.localeCompare(b));
  
-@@ -110,11 +120,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -110,11 +121,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
      const $ul = document.createElement("ul");
      for (let i=0; i<whats.length; i++) {
          const currpath = path + whats[i] + "/";
@@ -133,8 +165,39 @@ index 274ec67c..a526e7f6 100644
          }),
          rxjs.catchError(ctrlError(render)),
      ));
+diff --git a/public/assets/pages/filespage/cache.js b/public/assets/pages/filespage/cache.js
+index 4ab2a23f..fd3eb57d 100644
+--- a/public/assets/pages/filespage/cache.js
++++ b/public/assets/pages/filespage/cache.js
+@@ -90,7 +90,14 @@ class InMemoryCache extends ICache {
+ };
+ 
+ class IndexDBCache extends ICache {
+-    DB_VERSION = 5;
++    // HTL: v6 = one-time client cache wipe. Caches written before the
++    // share-hiding feature can still contain snapshots of the root folder
++    // WITH fileexchange/dfs/Users visible - the sidebar renders the cache
++    // before the HTTP ls lands, so those stale shares randomly re-appeared
++    // on slow networks ("old folder integration shows up at random").
++    // Bumping the version triggers _migration() which drops the store ->
++    // every browser rebuilds its cache from fresh, filtered server data.
++    DB_VERSION = 6;
+     FILE_PATH = "file_path";
+     /** @type {Promise<IDBDatabase> | null} */ db = null;
+ 
+@@ -205,6 +212,10 @@ class IndexDBCache extends ICache {
+             db.deleteObjectStore("file_path");
+             db.deleteObjectStore("file_content");
+             db.deleteObjectStore("file_tag");
++        } else if (event.oldVersion === 5) {
++            // HTL: wipe caches written before the share-hiding feature (they
++            // still carry FileExchange/dfs/Users snapshots of the root)
++            db.deleteObjectStore("file_path");
+         }
+         const store = db.createObjectStore(this.FILE_PATH, { keyPath: ["backend", "share", "path"] });
+         store.createIndex("idx_path", ["backend", "share", "path"], { unique: true });
 diff --git a/public/assets/pages/filespage/ctrl_filesystem.js b/public/assets/pages/filespage/ctrl_filesystem.js
-index 4da434d8..b8dc8c41 100644
+index 4da434d8..d2e9eff8 100644
 --- a/public/assets/pages/filespage/ctrl_filesystem.js
 +++ b/public/assets/pages/filespage/ctrl_filesystem.js
 @@ -9,8 +9,9 @@ import { createLoader } from "../../components/loader.js";
@@ -148,7 +211,7 @@ index 4da434d8..b8dc8c41 100644
  import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
  import { getState$ } from "./state_config.js";
  import { ls, search, searchUrlParam } from "./model_files.js";
-@@ -98,9 +99,45 @@ export default async function(render) {
+@@ -98,9 +99,36 @@ export default async function(render) {
          )),
          rxjs.mergeMap(({ show_hidden, files, search, ...rest }) => {
              if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
@@ -179,16 +242,7 @@ index 4da434d8..b8dc8c41 100644
 +            const username = htlHomeUser(home);
 +            if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
 +            const existing = obj.files.some((f) => f.name === username);
-+            const files = existing ? obj.files : [{
-+                // path is EXPLICIT: createLink() builds the link from file.path
-+                // when present - otherwise it glues currentPath()+name and the
-+                // entry would point at /<username>/ instead of /Users/<username>/
-+                name: username,
-+                type: "directory",
-+                path: "/Users/" + username + "/",
-+                time: 0,
-+                size: 0,
-+            }].concat(obj.files);
++            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
 +            return { ...obj, files };
 +        }),
          rxjs.map((data) => ({ ...data, count: count++ })),

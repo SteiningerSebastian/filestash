@@ -90,7 +90,14 @@ class InMemoryCache extends ICache {
 };
 
 class IndexDBCache extends ICache {
-    DB_VERSION = 5;
+    // HTL: v6 = one-time client cache wipe. Caches written before the
+    // share-hiding feature can still contain snapshots of the root folder
+    // WITH fileexchange/dfs/Users visible - the sidebar renders the cache
+    // before the HTTP ls lands, so those stale shares randomly re-appeared
+    // on slow networks ("old folder integration shows up at random").
+    // Bumping the version triggers _migration() which drops the store ->
+    // every browser rebuilds its cache from fresh, filtered server data.
+    DB_VERSION = 6;
     FILE_PATH = "file_path";
     /** @type {Promise<IDBDatabase> | null} */ db = null;
 
@@ -205,6 +212,10 @@ class IndexDBCache extends ICache {
             db.deleteObjectStore("file_path");
             db.deleteObjectStore("file_content");
             db.deleteObjectStore("file_tag");
+        } else if (event.oldVersion === 5) {
+            // HTL: wipe caches written before the share-hiding feature (they
+            // still carry FileExchange/dfs/Users snapshots of the root)
+            db.deleteObjectStore("file_path");
         }
         const store = db.createObjectStore(this.FILE_PATH, { keyPath: ["backend", "share", "path"] });
         store.createIndex("idx_path", ["backend", "share", "path"], { unique: true });
