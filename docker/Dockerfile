@@ -23,6 +23,17 @@ COPY go.mod go.sum Makefile embed.go /home/localcheckout/
 COPY cmd/ /home/localcheckout/cmd/
 COPY server/ /home/localcheckout/server/
 COPY public/ /home/localcheckout/public/
+# HTL: the go:generate step (make init -> server/pkg/env/generator.go) runs
+# `git rev-parse HEAD` to fill BUILD_REF; with a .git-less tree it silently
+# writes an EMPTY string and ServeIndex then panics on `BUILD_REF[0:7]`
+# (the 502 on every page). Ship a MINIMAL git metadata stub so rev-parse
+# resolves: HEAD + refs/heads/master (sha file). No worktree checkout is
+# needed - rev-parse HEAD only dereferences the ref.
+COPY docker/git-stub/HEAD /home/localcheckout/.git/HEAD
+COPY docker/git-stub/config /home/localcheckout/.git/config
+COPY docker/git-stub/objects/marker /home/localcheckout/.git/objects/marker
+COPY docker/git-stub/refs/heads/master /home/localcheckout/.git/refs/heads/master
+RUN git -C /home/localcheckout rev-parse --short HEAD
 RUN if [ "$USE_LOCAL" = "1" ]; then \
         echo "building from LOCAL working tree"; \
     else \

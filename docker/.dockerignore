@@ -16,3 +16,5 @@
 !docker
 !docker/Dockerfile
 
+!docker/git-stub
+!docker/git-stub/**
