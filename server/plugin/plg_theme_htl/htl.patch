@@ -1,11 +1,11 @@
 diff --git a/public/assets/components/sidebar.js b/public/assets/components/sidebar.js
-index 76d20e3e..ba0c840e 100644
+index 76d20e3e..a4939d99 100644
 --- a/public/assets/components/sidebar.js
 +++ b/public/assets/components/sidebar.js
-@@ -1,29 +1,70 @@
+@@ -1,29 +1,68 @@
 -import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
 +???import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
-+import { toHref } from "../lib/skeleton/router.js";
++import { navigate, toHref } from "../lib/skeleton/router.js";
  import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
 -import { qs } from "../lib/dom.js";
 +import { qs, safe } from "../lib/dom.js";
@@ -43,27 +43,25 @@ index 76d20e3e..ba0c840e 100644
      else if (window.self !== window.top) return;
      else if (document.body.clientWidth < 850) return;
  
-+    // feature (HTL): home-drive ("H:") quick link, HARDCODED in this template
-+    // (part of the DOM from the first paint - nothing can race or wipe it;
-+    // an injected/reactive version kept randomly resurrecting duplicates).
-+    // Label comes from the session home (/Users/<username>); hidden entirely
-+    // when no username is derivable. Sits BELOW the directory list.
-+    let username = "";
-+    try {
-+        const session = await getSession().pipe(rxjs.first()).toPromise();
-+        const home = (session || {}).home || "";
-+        username = htlHomeUser(home) || (home.split("/").filter((c) => c !== "")[0] || "");
-+    } catch (err) {}
-+    const homeHref = username ? toHref("/files/Users/" + encodeURIComponent(username).replaceAll("%2F", "/")) : null;
-+    const homeButton = homeHref ? `
++    // feature (HTL): home-drive ("H:") button, hardcoded in the template and
++    // rendered UNCONDITIONALLY. Upstream-parity lesson (comparing with
++    // mickael/kerjean/filestash): withInstantLoad() clones the sidebar DOM
++    // on destroy and replays it on every re-render. A button built AFTER an
++    // async session fetch misses the FIRST render -> gets baked out of the
++    // cache -> "randomly" vanishes (visible only where the fetch won the
++    // race). So: static markup from the first paint + the click handler
++    // resolves /files/Users/<username> at CLICK time from the session. The
++    // label is filled in-place once the session arrives (same node, cache
++    // stays consistent). No user? click routes through login like any fetch.
++    const homeButton = `
 +        <ul class="htl-quickshare">
 +            <li class="no-select">
-+                <a data-link href="${homeHref}" draggable="false" aria-selected="false" title="/Users/${safe(username)}/">
++                <a data-htl-home="link" href="" draggable="false" aria-selected="false" title="My Home Drive (H:)">
 +                    <img class="component_icon" src="${HTL_HOME_ICON}" alt="directory" draggable="false">
-+                    <div class="ellipsis">${safe(username)}</div>
++                    <div class="ellipsis">Home</div>
 +                </a>
 +            </li>
-+        </ul>` : "";
++        </ul>`;
 +
      const $sidebar = render(createElement(`
          <div class="component_sidebar"><div>
@@ -79,6 +77,36 @@ index 76d20e3e..ba0c840e 100644
              <div data-bind="your-tags">
                  ${generateSkeleton(2)}
              </div>
+@@ -32,6 +71,29 @@ export default async function ctrlSidebar(render, {}) {
+     withInstantLoad($sidebar);
+     withResize($sidebar);
+ 
++    // feature (HTL): resolve the home button's label + target from the
++    // session, in place (the node identity is stable: template-rendered).
++    // The router's global data-link handler only follows clicks carrying
++    // [data-link]; ours sets the href BEFORE navigation, so: intercept the
++    // click, resolve, then run navigate() directly (href stays empty until
++    // then, so a middle-hover shows nothing bogus).
++    const $homeLink = qs($sidebar, `[data-htl-home="link"]`);
++    $homeLink.onclick = async(e) => {
++        e.preventDefault();
++        e.stopPropagation();
++        try {
++            const session = await getSession().pipe(rxjs.first()).toPromise();
++            const home = (session || {}).home || "";
++            const u = htlHomeUser(home) || (home.split("/").filter((c) => c !== "")[0] || "");
++            if (u) {
++                qs($homeLink, ".ellipsis").textContent = u;
++                $homeLink.setAttribute("title", "/Users/" + u + "/");
++                return navigate(toHref("/files/Users/" + encodeURIComponent(u).replaceAll("%2F", "/")));
++            }
++        } catch (err) {}
++        window.location.href = toHref("/login?next=" + location.pathname); // no session: login first
++    };
++
+     const path = getCurrentPath("(/view/|/files/)");
+ 
+     // fature: file navigation pane
 diff --git a/public/assets/components/sidebar_files.js b/public/assets/components/sidebar_files.js
 index 2df4b0af..40babe53 100644
 --- a/public/assets/components/sidebar_files.js
