@@ -1,44 +1,57 @@
-# STEP1: CLONE THE CODE
-FROM alpine/git AS builder_prepare
-WORKDIR /home/
-# HTL: default to the FORK (OptsAfterLogin / OPTS UTF8 ON fix lives in the
-# backend code built from here). Building without --build-arg used to clone
-# UPSTREAM - silently shipping without the UTF-8 fix (verified: binary grep
-# had 0 hits for 'OPTS UTF8 ON'/'OptsAfterLogin', mojibake persisted).
+# STEP1: SOURCE
+# HTL: build from the LOCAL WORKING TREE by default - no clone, what you
+# have on disk is what gets compiled (still: COMMIT + PUSH before shipping,
+# the deploy script enforces it). Set USE_LOCAL=0 to build from a fresh
+# git clone (upstream-style; GIT_REPO/GIT_BRANCH selectors below).
+# USE_LOCAL is a build arg so switching modes cache-busts exactly one path.
+ARG USE_LOCAL=1
 ARG GIT_REPO=https://github.com/SteiningerSebastian/filestash
 ARG GIT_BRANCH=master
-# HTL: cache-busting for the git clone ONLY. Docker keys every RUN layer on
-# the build args it consumes, so passing a NEW GIT_REV invalidates exactly
-# this clone step (fresh source -> the binary carries the latest commit)
-# while the expensive apt-get layers in STAGE2 stay cached (their inputs
-# don't reference GIT_REV). Usage:
-#   docker build -t <tag> .                      # = GIT_REV unchanged -> cached clone
-#   docker build --build-arg GIT_REV=<any-new-value> -t <tag> .   # fresh clone
-# or resolve the real head first for a reproducible pin:
-#   $rev = (git ls-remote https://github.com/SteiningerSebastian/filestash refs/heads/master).Split("`t")[0]
-#   docker build --build-arg GIT_REV=$rev -t <tag> .
-ARG GIT_REV=initial
-RUN git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} /home/checkout && \
-    git -C /home/checkout rev-parse --short HEAD
+FROM alpine/git AS builder_prepare
+ARG USE_LOCAL
+ARG GIT_REPO
+ARG GIT_BRANCH
+WORKDIR /home/
+# HTL (CACHE ANTI-PATTERN KILLER): the build context is copied in TWO parts:
+#   1. EVERYTHING EXCEPT dist/ -> feeds the Go build. A theme-zip rebuild
+#      or any dist churn NEVER touches this layer, so `make init`/`make
+#      build` stay cached (this was the ~10min rebuild trap).
+#   2. dist/plugins/ -> copied at the VERY END (zip baking), one tiny layer.
+COPY go.mod go.sum Makefile embed.go /home/localcheckout/
+COPY cmd/ /home/localcheckout/cmd/
+COPY server/ /home/localcheckout/server/
+COPY public/ /home/localcheckout/public/
+RUN if [ "$USE_LOCAL" = "1" ]; then \
+        echo "building from LOCAL working tree"; \
+    else \
+        rm -rf /home/localcheckout/* /home/localcheckout/.* 2>/dev/null; \
+        git clone --depth 1 --single-branch --branch ${GIT_BRANCH} ${GIT_REPO} /tmp/remotecheckout && \
+        cp -a /tmp/remotecheckout/. /home/localcheckout/ && rm -rf /tmp/remotecheckout && \
+        git -C /home/localcheckout rev-parse --short HEAD; \
+    fi
 
 # STEP2: BUILD BACKEND
 FROM golang:1.26-trixie AS builder_backend
-# HTL: the fat apt installs live BEFORE the source COPY so re-cloning the
-# repo (new GIT_REV) never re-runs them - their layers are children of the
-# base image, not of the changed COPY.
+# HTL: the fat apt installs live BEFORE the source COPY so source changes
+# never re-run them - their layers are children of the base image, not of
+# the changed COPY.
 WORKDIR /home/filestash/
-COPY --from=builder_prepare /home/checkout/ .
 RUN apt-get update > /dev/null && \
     apt-get install -y curl make > /dev/null 2>&1 && \
     apt-get install -y libjpeg-dev libtiff-dev libpng-dev libwebp-dev libraw-dev libheif-dev libgif-dev libvips-dev > /dev/null 2>&1 && \
     apt-get install -y libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libswresample-dev libswscale-dev libavutil-dev > /dev/null 2>&1
+# HTL: source COPY from the prepared stage. Docker keys this layer on the
+# CONTENT of /home/localcheckout - local file changes (or a remote clone
+# with USE_LOCAL=0) re-run exactly this COPY + the make layers below;
+# the fat apt layers above stay cached.
+COPY --from=builder_prepare /home/localcheckout/ .
 # HTL: `make init` (go mod download) in its OWN layer with a cache mount, so
-# a cache-busted rebuild re-runs it AFTER a fresh clone but re-downloads ZERO
-# go modules (module + build caches are persistent BuildKit cache mounts).
+# a source change re-runs it but re-downloads ZERO go modules (module +
+# build caches are persistent BuildKit cache mounts).
 RUN --mount=type=cache,target=/go/pkg/mod \
     make init
-# HTL: build layer depends on the fresh source -> re-runs on every cache
-# bust while apt & module layers above stay cached.
+# HTL: build layer depends on the fresh source -> re-runs on every source
+# change while apt & module layers above stay cached.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     make build
