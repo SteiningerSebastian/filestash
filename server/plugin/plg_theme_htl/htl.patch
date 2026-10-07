@@ -1,9 +1,10 @@
 diff --git a/public/assets/components/sidebar.js b/public/assets/components/sidebar.js
-index 76d20e3e..f5690e55 100644
+index 76d20e3e..44b1105c 100644
 --- a/public/assets/components/sidebar.js
 +++ b/public/assets/components/sidebar.js
-@@ -1,11 +1,13 @@
+@@ -1,11 +1,14 @@
  import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
++import { navigate, toHref } from "../lib/skeleton/router.js";
  import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
 -import { qs } from "../lib/dom.js";
 +import { qs, safe } from "../lib/dom.js";
@@ -17,7 +18,7 @@ index 76d20e3e..f5690e55 100644
  
  import ctrlNavigationPane from "./sidebar_files.js";
  import ctrlTagPane from "./sidebar_tags.js";
-@@ -15,8 +17,30 @@ export default async function ctrlSidebar(render, {}) {
+@@ -15,8 +18,30 @@ export default async function ctrlSidebar(render, {}) {
      else if (window.self !== window.top) return;
      else if (document.body.clientWidth < 850) return;
  

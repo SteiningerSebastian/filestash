@@ -1,4 +1,5 @@
 import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
+import { navigate, toHref } from "../lib/skeleton/router.js";
 import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
 import { qs, safe } from "../lib/dom.js";
 import { settingsGet, settingsSave } from "../lib/store.js";
