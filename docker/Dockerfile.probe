@@ -1,6 +1,0 @@
-FROM alpine:3.19
-COPY go.mod /probe/go.mod
-COPY Makefile /probe/Makefile
-COPY public/ /probe/public/
-WORKDIR /probe
-RUN ls -la /probe && ls /probe/public | head -3
