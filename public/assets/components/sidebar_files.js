@@ -131,10 +131,16 @@ async function installHomeShortcut($sidebar) {
     // query the inner wrapper relative to it — NOT ".component_sidebar > div"
     // (that selector searches for a NESTED .component_sidebar and always
     // returned null -> the shortcut silently never appeared).
-    const $holder = qs($sidebar, ":scope > div");
+    // NOTE: plain querySelector everywhere here — the shared qs() helper
+    // THROWS NotFoundError on empty matches, which on the FIRST install is
+    // the normal case (nothing to replace yet) and crashed this whole
+    // function with "undefined node for selector '.htl-quickshare'".
+    const $holder = $sidebar.querySelector(":scope > div");
     if (!$holder) return;
-    const $previous = qs($holder, ".htl-quickshare");
+    const $previous = $holder.querySelector(".htl-quickshare");
     if ($previous) $previous.remove();
+    const $yourFiles = $holder.querySelector('[data-bind="your-files"]');
+    if (!$yourFiles) return;
     const $home = createElement(`
         <ul class="htl-quickshare">
             <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
@@ -145,7 +151,7 @@ async function installHomeShortcut($sidebar) {
             </li>
         </ul>
     `);
-    $holder.insertBefore($home, qs($holder, `[data-bind="your-files"]`));
+    $holder.insertBefore($home, $yourFiles);
 }
 
 async function _createListOfFiles(path, { basename = null, dirname = null }) {

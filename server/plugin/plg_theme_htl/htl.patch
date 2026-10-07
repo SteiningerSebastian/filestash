@@ -1,5 +1,5 @@
 diff --git a/public/assets/components/sidebar_files.js b/public/assets/components/sidebar_files.js
-index 2df4b0af..053e497a 100644
+index 2df4b0af..2991bc50 100644
 --- a/public/assets/components/sidebar_files.js
 +++ b/public/assets/components/sidebar_files.js
 @@ -4,12 +4,21 @@ import { toHref } from "../lib/skeleton/router.js";
@@ -25,7 +25,7 @@ index 2df4b0af..053e497a 100644
      // feature: init dom
      const $fs = document.createDocumentFragment();
      const dirname = path.replace(new RegExp("[^\/]*$"), "");
-@@ -95,6 +104,50 @@ const mv = (from, to) => withVirtualLayer(
+@@ -95,6 +104,56 @@ const mv = (from, to) => withVirtualLayer(
      mvVL(from, to),
  );
  
@@ -56,10 +56,16 @@ index 2df4b0af..053e497a 100644
 +    // query the inner wrapper relative to it ??? NOT ".component_sidebar > div"
 +    // (that selector searches for a NESTED .component_sidebar and always
 +    // returned null -> the shortcut silently never appeared).
-+    const $holder = qs($sidebar, ":scope > div");
++    // NOTE: plain querySelector everywhere here ??? the shared qs() helper
++    // THROWS NotFoundError on empty matches, which on the FIRST install is
++    // the normal case (nothing to replace yet) and crashed this whole
++    // function with "undefined node for selector '.htl-quickshare'".
++    const $holder = $sidebar.querySelector(":scope > div");
 +    if (!$holder) return;
-+    const $previous = qs($holder, ".htl-quickshare");
++    const $previous = $holder.querySelector(".htl-quickshare");
 +    if ($previous) $previous.remove();
++    const $yourFiles = $holder.querySelector('[data-bind="your-files"]');
++    if (!$yourFiles) return;
 +    const $home = createElement(`
 +        <ul class="htl-quickshare">
 +            <li data-path="${safe(home)}" title="${safe(home)}" class="no-select">
@@ -70,13 +76,13 @@ index 2df4b0af..053e497a 100644
 +            </li>
 +        </ul>
 +    `);
-+    $holder.insertBefore($home, qs($holder, `[data-bind="your-files"]`));
++    $holder.insertBefore($home, $yourFiles);
 +}
 +
  async function _createListOfFiles(path, { basename = null, dirname = null }) {
      const MAX_DISPLAY = 100;
      const r = await cache().get(path);
-@@ -102,6 +155,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -102,6 +161,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
          ? (basename ? [basename] : [])
          : r.files
              .filter(({ type, name }) => type === "directory" && name[0] !== ".")
@@ -84,7 +90,7 @@ index 2df4b0af..053e497a 100644
              .map(({ name }) => name)
              .sort((a, b) => a.localeCompare(b));
  
-@@ -110,11 +164,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
+@@ -110,11 +170,13 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
      const $ul = document.createElement("ul");
      for (let i=0; i<whats.length; i++) {
          const currpath = path + whats[i] + "/";
