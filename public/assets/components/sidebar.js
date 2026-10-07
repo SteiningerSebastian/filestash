@@ -16,9 +16,10 @@ import ctrlTagPane from "./sidebar_tags.js";
 const HTL_HOME_ICON = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20fill='%23009883'%20d='M1.5%202A1.5%201.5%200%200%200%200%203.5V12.5A1.5%201.5%200%200%200%201.5%2014H14.5A1.5%201.5%200%200%200%2016%2012.5V5.5A1.5%201.5%200%200%200%2014.5%204H8.2L6.9%202.4A1%201%200%200%200%206.2%202Z'/%3E%3C/svg%3E";
 
 // HTL (fork): school logo, hardcoded as inline HTML (user request).
-// Teal "tower" mark matching the www.htl-neufelden.at color tokens + name.
+// The same logo as cloud.apps.htl-neufelden.at; clicking it navigates to
+// the storage root ("/files/") via the SPA router (like upstream "home").
 const HTL_LOGO_HTML = `
-    <a class="htl-brand" href="https://www.htl-neufelden.at" target="_blank" rel="noopener" title="HTL Neufelden">
+    <a class="htl-brand" data-link href="${toHref("/files/")}" title="Home">
         <svg class="htl-brand-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
             <rect x="13" y="2" width="6" height="16" rx="1" fill="#009883"></rect>
             <rect x="5" y="8" width="6" height="10" rx="1" fill="#65d1c7"></rect>
