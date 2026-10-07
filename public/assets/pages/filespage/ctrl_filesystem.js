@@ -113,9 +113,10 @@ export default async function(render) {
         }),
         // HTL: on the ROOT page, prepend one normal folder named after the
         // user which navigates to their home drive ("H:"). Same createThing
-        // pipeline as every other entry -> looks & behaves like the real
-        // thing (grid + list mode, selection, etc). The username comes from
-        // the session home; when unavailable (eg. Guest), nothing is added.
+        // pipeline as every other entry. `path` is EXPLICIT: createLink()
+        // builds the link from file.path when present - otherwise it glues
+        // currentPath()+name and the entry would point at /<username>/
+        // instead of /Users/<username>/.
         rxjs.mergeMap(async(obj) => {
             if (currentPath() !== "/" || obj.search) return obj;
             let home = "";
@@ -126,7 +127,13 @@ export default async function(render) {
             const username = htlHomeUser(home);
             if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
             const existing = obj.files.some((f) => f.name === username);
-            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
+            const files = existing ? obj.files : [{
+                name: username,
+                type: "directory",
+                path: "/Users/" + username + "/",
+                time: 0,
+                size: 0,
+            }].concat(obj.files);
             return { ...obj, files };
         }),
         rxjs.map((data) => ({ ...data, count: count++ })),

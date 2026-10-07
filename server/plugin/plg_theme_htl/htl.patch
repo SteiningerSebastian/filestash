@@ -226,7 +226,7 @@ index 4ab2a23f..fd3eb57d 100644
          const store = db.createObjectStore(this.FILE_PATH, { keyPath: ["backend", "share", "path"] });
          store.createIndex("idx_path", ["backend", "share", "path"], { unique: true });
 diff --git a/public/assets/pages/filespage/ctrl_filesystem.js b/public/assets/pages/filespage/ctrl_filesystem.js
-index 4da434d8..d2e9eff8 100644
+index 4da434d8..7c81bbdc 100644
 --- a/public/assets/pages/filespage/ctrl_filesystem.js
 +++ b/public/assets/pages/filespage/ctrl_filesystem.js
 @@ -9,8 +9,9 @@ import { createLoader } from "../../components/loader.js";
@@ -240,7 +240,7 @@ index 4da434d8..d2e9eff8 100644
  import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
  import { getState$ } from "./state_config.js";
  import { ls, search, searchUrlParam } from "./model_files.js";
-@@ -98,9 +99,36 @@ export default async function(render) {
+@@ -98,9 +99,43 @@ export default async function(render) {
          )),
          rxjs.mergeMap(({ show_hidden, files, search, ...rest }) => {
              if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
@@ -258,9 +258,10 @@ index 4da434d8..d2e9eff8 100644
          }),
 +        // HTL: on the ROOT page, prepend one normal folder named after the
 +        // user which navigates to their home drive ("H:"). Same createThing
-+        // pipeline as every other entry -> looks & behaves like the real
-+        // thing (grid + list mode, selection, etc). The username comes from
-+        // the session home; when unavailable (eg. Guest), nothing is added.
++        // pipeline as every other entry. `path` is EXPLICIT: createLink()
++        // builds the link from file.path when present - otherwise it glues
++        // currentPath()+name and the entry would point at /<username>/
++        // instead of /Users/<username>/.
 +        rxjs.mergeMap(async(obj) => {
 +            if (currentPath() !== "/" || obj.search) return obj;
 +            let home = "";
@@ -271,7 +272,13 @@ index 4da434d8..d2e9eff8 100644
 +            const username = htlHomeUser(home);
 +            if (!username) return { ...obj, files: [{ name: "Users", type: "directory" }].concat(obj.files) };
 +            const existing = obj.files.some((f) => f.name === username);
-+            const files = existing ? obj.files : [{ name: username, type: "directory", time: 0, size: 0 }].concat(obj.files);
++            const files = existing ? obj.files : [{
++                name: username,
++                type: "directory",
++                path: "/Users/" + username + "/",
++                time: 0,
++                size: 0,
++            }].concat(obj.files);
 +            return { ...obj, files };
 +        }),
          rxjs.map((data) => ({ ...data, count: count++ })),
