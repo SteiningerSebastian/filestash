@@ -36,7 +36,9 @@ func init() {
 // the TCP connection (typical around long-idle periods; the download itself
 // is just what keeps the socket warm), the library latches the net error on
 // its connection and EVERY later operation fails with
-//   "connection error: read tcp ...: connection reset by peer"
+//
+//	"connection error: read tcp ...: connection reset by peer"
+//
 // until a brand new session is established - hence the old "only re-login
 // helps" symptom. Fix used here (same idea as upstream's unreleased `client`
 // package): remember the dial parameters, detect the poisoned transport (or
