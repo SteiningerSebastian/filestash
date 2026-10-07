@@ -4,7 +4,7 @@ import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
 import cache from "../pages/filespage/cache.js";
-import { extractPath, isDir, isNativeFileUpload, htlIsHiddenShare, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
+import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
 import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
 import { hooks, mv as mv$ } from "../pages/filespage/model_files.js";
 import ctrlError from "../pages/ctrl_error.js";
@@ -128,8 +128,8 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
     const whats = r === null
         ? (basename ? [basename] : [])
         : r.files
-            .filter(({ type, name }) => type === "directory" && name[0] !== "." &&
-                htlIsHiddenShare(name) === false) // HTL: fileexchange / dfs / users are noise for students
+            .filter(({ type, name }) => type === "directory" && name[0] !== ".")
+            .filter((f) => htlFilterDirectory(path, f)) // HTL: hide system shares at the root level only
             .map(({ name }) => name)
             .sort((a, b) => a.localeCompare(b));
 

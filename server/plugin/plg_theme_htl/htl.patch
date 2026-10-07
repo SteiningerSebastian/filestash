@@ -1,5 +1,5 @@
 diff --git a/public/assets/components/sidebar_files.js b/public/assets/components/sidebar_files.js
-index 2df4b0af..d705fc53 100644
+index 2df4b0af..4ae394f4 100644
 --- a/public/assets/components/sidebar_files.js
 +++ b/public/assets/components/sidebar_files.js
 @@ -4,12 +4,39 @@ import { toHref } from "../lib/skeleton/router.js";
@@ -7,7 +7,7 @@ index 2df4b0af..d705fc53 100644
  import { forwardURLParams } from "../lib/path.js";
  import cache from "../pages/filespage/cache.js";
 -import { extractPath, isDir, isNativeFileUpload } from "../pages/filespage/helper.js";
-+import { extractPath, isDir, isNativeFileUpload, htlIsHiddenShare, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
++import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser, htlHomeDir } from "../pages/filespage/helper.js";
  import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
  import { hooks, mv as mv$ } from "../pages/filespage/model_files.js";
  import ctrlError from "../pages/ctrl_error.js";
@@ -43,13 +43,11 @@ index 2df4b0af..d705fc53 100644
      // feature: init dom
      const $fs = document.createDocumentFragment();
      const dirname = path.replace(new RegExp("[^\/]*$"), "");
-@@ -101,7 +128,8 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
-     const whats = r === null
+@@ -102,6 +129,7 @@ async function _createListOfFiles(path, { basename = null, dirname = null }) {
          ? (basename ? [basename] : [])
          : r.files
--            .filter(({ type, name }) => type === "directory" && name[0] !== ".")
-+            .filter(({ type, name }) => type === "directory" && name[0] !== "." &&
-+                htlIsHiddenShare(name) === false) // HTL: fileexchange / dfs / users are noise for students
+             .filter(({ type, name }) => type === "directory" && name[0] !== ".")
++            .filter((f) => htlFilterDirectory(path, f)) // HTL: hide system shares at the root level only
              .map(({ name }) => name)
              .sort((a, b) => a.localeCompare(b));
  
@@ -96,38 +94,39 @@ index 274ec67c..a526e7f6 100644
          rxjs.catchError(ctrlError(render)),
      ));
 diff --git a/public/assets/pages/filespage/ctrl_filesystem.js b/public/assets/pages/filespage/ctrl_filesystem.js
-index 4da434d8..97bcff01 100644
+index 4da434d8..78a0921a 100644
 --- a/public/assets/pages/filespage/ctrl_filesystem.js
 +++ b/public/assets/pages/filespage/ctrl_filesystem.js
-@@ -9,7 +9,8 @@ import { createLoader } from "../../components/loader.js";
+@@ -9,7 +9,7 @@ import { createLoader } from "../../components/loader.js";
  import t from "../../locales/index.js";
  import ctrlError from "../ctrl_error.js";
  
 -import { currentPath, sort, isMobile, isAlreadyFocused } from "./helper.js";
-+import { currentPath, sort, isMobile, isAlreadyFocused, htlIsHiddenShare } from "./helper.js";
-+import { basename } from "../../lib/path.js";
++import { currentPath, sort, isMobile, isAlreadyFocused, htlFilterDirectory } from "./helper.js";
  import { createThing } from "./thing.js";
  import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
  import { getState$ } from "./state_config.js";
-@@ -98,6 +99,13 @@ export default async function(render) {
+@@ -98,6 +98,15 @@ export default async function(render) {
          )),
          rxjs.mergeMap(({ show_hidden, files, search, ...rest }) => {
              if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
 +            // HTL: system shares (fileexchange, dfs, users) stay fully
 +            // protected server side but are pointless noise in a student's
-+            // view - hide them at the storage root only (same folder names
-+            // are legit deeper in the tree / in search results).
-+            if (!search && currentPath() === "/") {
-+                files = files.filter((f) => htlIsHiddenShare(f.name || basename(f.path || "")) === false);
++            // view - hide them at the storage root level ONLY (a folder
++            // named "Users" deeper in the tree is legit and stays visible;
++            // search results are never filtered at all).
++            if (!search) {
++                const level = currentPath();
++                files = files.filter((f) => htlFilterDirectory(level, f));
 +            }
              if (!search) files = sort(files, rest["sort"], rest["order"]);
              return rxjs.of({ ...rest, files, search });
          }),
 diff --git a/public/assets/pages/filespage/helper.js b/public/assets/pages/filespage/helper.js
-index ffe1b3e1..4d52d194 100644
+index ffe1b3e1..896bd6bc 100644
 --- a/public/assets/pages/filespage/helper.js
 +++ b/public/assets/pages/filespage/helper.js
-@@ -135,3 +135,30 @@ export const isAlreadyFocused = () => {
+@@ -135,3 +135,39 @@ export const isAlreadyFocused = () => {
      const tagName = assert.type(document.activeElement, HTMLElement).tagName;
      return ["INPUT", "TEXTAREA"].indexOf(tagName) !== -1;
  };
@@ -141,9 +140,12 @@ index ffe1b3e1..4d52d194 100644
 +//   - ctrl_homepage.js: land users directly in their own home drive
 +// Nothing is removed server side: authentication AND authorisation keep being
 +// enforced by the backend (the entries are hidden, not deleted).
-+// NOTE: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
++// NOTE 1: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
 +// the candidate folder name before lookup, so capitalizations like "Users"
 +// or "FileExchange" on the SMB server still match. Don't "fix" the casing here.
++// NOTE 2: only the TOP LEVEL (storage root share list) is filtered. A folder
++// named "Users" anywhere deeper (eg. inside a class share) is legit and MUST
++// stay visible - pass the parent path; anything other than "/" wins untouched.
 +export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "users"];
 +
 +// "/Users/jdoe/school/project.txt" -> "jdoe"
@@ -156,5 +158,11 @@ index ffe1b3e1..4d52d194 100644
 +// "/Users/jdoe/" -> "/Users/jdoe/" | "/Users/jdoe/stuff" -> "/Users/jdoe/"
 +export const htlHomeDir = (user) => user ? "/Users/" + user + "/" : "";
 +
++// name matching, case-insensitive (see NOTE 1 above)
 +export const htlIsHiddenShare = (name = "") =>
 +    HTL_SYSTEM_SHARES.indexOf(name.toLowerCase()) !== -1;
++
++// filter for one directory LEVEL: system shares are hidden ONLY when they sit
++// at the storage root ("/") - deeper folders with the same name stay visible.
++export const htlFilterDirectory = (parentPath, file) =>
++    parentPath === "/" ? htlIsHiddenShare(file.name) === false : true;

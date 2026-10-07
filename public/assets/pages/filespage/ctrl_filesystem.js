@@ -9,8 +9,7 @@ import { createLoader } from "../../components/loader.js";
 import t from "../../locales/index.js";
 import ctrlError from "../ctrl_error.js";
 
-import { currentPath, sort, isMobile, isAlreadyFocused, htlIsHiddenShare } from "./helper.js";
-import { basename } from "../../lib/path.js";
+import { currentPath, sort, isMobile, isAlreadyFocused, htlFilterDirectory } from "./helper.js";
 import { createThing } from "./thing.js";
 import { clearSelection, addSelection, getSelection$, isSelected } from "./state_selection.js";
 import { getState$ } from "./state_config.js";
@@ -101,10 +100,12 @@ export default async function(render) {
             if (show_hidden === false) files = files.filter(({ name }) => name[0] !== ".");
             // HTL: system shares (fileexchange, dfs, users) stay fully
             // protected server side but are pointless noise in a student's
-            // view - hide them at the storage root only (same folder names
-            // are legit deeper in the tree / in search results).
-            if (!search && currentPath() === "/") {
-                files = files.filter((f) => htlIsHiddenShare(f.name || basename(f.path || "")) === false);
+            // view - hide them at the storage root level ONLY (a folder
+            // named "Users" deeper in the tree is legit and stays visible;
+            // search results are never filtered at all).
+            if (!search) {
+                const level = currentPath();
+                files = files.filter((f) => htlFilterDirectory(level, f));
             }
             if (!search) files = sort(files, rest["sort"], rest["order"]);
             return rxjs.of({ ...rest, files, search });

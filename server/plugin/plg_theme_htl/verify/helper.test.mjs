@@ -19,6 +19,9 @@ const htlHomeDir = (user) => user ? "/Users/" + user + "/" : "";
 
 const htlIsHiddenShare = (name = "") =>
     HTL_SYSTEM_SHARES.indexOf(name.toLowerCase()) !== -1;
+
+const htlFilterDirectory = (parentPath, file) =>
+    parentPath === "/" ? htlIsHiddenShare(file.name) === false : true;
 // -------------------------------------------------------------------------
 
 import assert from "node:assert";
@@ -50,6 +53,31 @@ assert.strictEqual(htlIsHiddenShare("12a_atn"), false);
 assert.strictEqual(htlIsHiddenShare("classrooms"), false);
 assert.strictEqual(htlIsHiddenShare(""), false);
 assert.strictEqual(htlIsHiddenShare(), false); // default param (search results w/o name)
+
+// ---- htlFilterDirectory: TOP LEVEL ONLY hiding -------------------------
+// storage root: the 3 system shares vanish, real content stays
+assert.deepStrictEqual(
+    ["FileExchange", "dfs", "Users", "A2024B", "Classrooms", "readme.txt"]
+        .map((name) => ({ name }))
+        .filter((f) => htlFilterDirectory("/", f))
+        .map((f) => f.name),
+    ["A2024B", "Classrooms", "readme.txt"],
+);
+// one level deeper: a custom "Users" folder MUST stay visible (user request)
+assert.deepStrictEqual(
+    ["Users", "2024-25", "notes.txt"]
+        .map((name) => ({ name }))
+        .filter((f) => htlFilterDirectory("/Classrooms/", f))
+        .map((f) => f.name),
+    ["Users", "2024-25", "notes.txt"],
+);
+assert.deepStrictEqual(
+    ["dfs", "other"]
+        .map((name) => ({ name }))
+        .filter((f) => htlFilterDirectory("/Users/jdoe/", f))
+        .map((f) => f.name),
+    ["dfs", "other"],
+);
 
 // ---- ctrl_filesystem.js filter semantics (root list only) ---------------
 const rootFiles = [

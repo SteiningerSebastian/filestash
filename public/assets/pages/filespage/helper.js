@@ -145,9 +145,12 @@ export const isAlreadyFocused = () => {
 //   - ctrl_homepage.js: land users directly in their own home drive
 // Nothing is removed server side: authentication AND authorisation keep being
 // enforced by the backend (the entries are hidden, not deleted).
-// NOTE: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
+// NOTE 1: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
 // the candidate folder name before lookup, so capitalizations like "Users"
 // or "FileExchange" on the SMB server still match. Don't "fix" the casing here.
+// NOTE 2: only the TOP LEVEL (storage root share list) is filtered. A folder
+// named "Users" anywhere deeper (eg. inside a class share) is legit and MUST
+// stay visible - pass the parent path; anything other than "/" wins untouched.
 export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "users"];
 
 // "/Users/jdoe/school/project.txt" -> "jdoe"
@@ -160,5 +163,11 @@ export const htlHomeUser = (path) => {
 // "/Users/jdoe/" -> "/Users/jdoe/" | "/Users/jdoe/stuff" -> "/Users/jdoe/"
 export const htlHomeDir = (user) => user ? "/Users/" + user + "/" : "";
 
+// name matching, case-insensitive (see NOTE 1 above)
 export const htlIsHiddenShare = (name = "") =>
     HTL_SYSTEM_SHARES.indexOf(name.toLowerCase()) !== -1;
+
+// filter for one directory LEVEL: system shares are hidden ONLY when they sit
+// at the storage root ("/") - deeper folders with the same name stay visible.
+export const htlFilterDirectory = (parentPath, file) =>
+    parentPath === "/" ? htlIsHiddenShare(file.name) === false : true;
