@@ -1,0 +1,13 @@
+const fs = require("fs");
+const p = fs.readFileSync("server/plugin/plg_theme_htl/htl.patch", "utf8");
+const goodList = '["fileexchange", "dfs", "users"]';
+const badList = '["fileexchange", "dfs", "Users"]';
+const goodCmp = '!== "users"';
+const badCmp = '!== "Users"';
+console.log("correct lowercase share list:", p.includes(goodList));
+console.log("broken capital-U list:", p.includes(badList));
+console.log("correct homeuser compare:", p.includes(goodCmp));
+console.log("broken homeuser compare:", p.includes(badCmp));
+const good = p.includes(goodList) && p.includes(goodCmp) && !p.includes(badList) && !p.includes(badCmp);
+console.log(good ? "PATCH_CONTENT_OK" : "PATCH_CONTENT_BAD");
+process.exit(good ? 0 : 1);

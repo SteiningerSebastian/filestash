@@ -145,12 +145,15 @@ export const isAlreadyFocused = () => {
 //   - ctrl_homepage.js: land users directly in their own home drive
 // Nothing is removed server side: authentication AND authorisation keep being
 // enforced by the backend (the entries are hidden, not deleted).
-export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "Users"];
+// NOTE: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
+// the candidate folder name before lookup, so capitalizations like "Users"
+// or "FileExchange" on the SMB server still match. Don't "fix" the casing here.
+export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "users"];
 
 // "/Users/jdoe/school/project.txt" -> "jdoe"
 export const htlHomeUser = (path) => {
     const chunks = (path || "").split("/").filter((chunks) => chunks !== "");
-    if (chunks.length < 2 || chunks[0].toLowerCase() !== "Users") return "";
+    if (chunks.length < 2 || chunks[0].toLowerCase() !== "users") return "";
     return decodeURIComponent(chunks[1]);
 };
 

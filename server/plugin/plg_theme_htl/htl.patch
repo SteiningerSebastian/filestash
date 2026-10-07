@@ -124,10 +124,10 @@ index 4da434d8..97bcff01 100644
              return rxjs.of({ ...rest, files, search });
          }),
 diff --git a/public/assets/pages/filespage/helper.js b/public/assets/pages/filespage/helper.js
-index ffe1b3e1..2c1673fc 100644
+index ffe1b3e1..4d52d194 100644
 --- a/public/assets/pages/filespage/helper.js
 +++ b/public/assets/pages/filespage/helper.js
-@@ -135,3 +135,27 @@ export const isAlreadyFocused = () => {
+@@ -135,3 +135,30 @@ export const isAlreadyFocused = () => {
      const tagName = assert.type(document.activeElement, HTMLElement).tagName;
      return ["INPUT", "TEXTAREA"].indexOf(tagName) !== -1;
  };
@@ -141,6 +141,9 @@ index ffe1b3e1..2c1673fc 100644
 +//   - ctrl_homepage.js: land users directly in their own home drive
 +// Nothing is removed server side: authentication AND authorisation keep being
 +// enforced by the backend (the entries are hidden, not deleted).
++// NOTE: names are stored LOWERCASE on purpose - htlIsHiddenShare() lowercases
++// the candidate folder name before lookup, so capitalizations like "Users"
++// or "FileExchange" on the SMB server still match. Don't "fix" the casing here.
 +export const HTL_SYSTEM_SHARES = ["fileexchange", "dfs", "users"];
 +
 +// "/Users/jdoe/school/project.txt" -> "jdoe"
