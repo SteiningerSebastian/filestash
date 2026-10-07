@@ -3,6 +3,7 @@ package plg_backend_samba
 import (
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.com/hirochachacha/go-smb2"
@@ -18,6 +19,7 @@ type readahead struct {
 	inflight *atomic.Int32
 	queue    []chan chunk
 	cur      chunk
+	closeOne sync.Once // Close must release `inflight` exactly once or a leaked/double-closed stream would wedge the session-eviction guard forever
 }
 
 type chunk struct {
@@ -54,11 +56,15 @@ func (this *readahead) Read(p []byte) (int, error) {
 }
 
 func (this *readahead) Close() error {
-	for _, c := range this.queue {
-		<-c
-	}
-	this.inflight.Add(-1)
-	return this.f.Close()
+	var err error
+	this.closeOne.Do(func() {
+		for _, c := range this.queue {
+			<-c // drain pending readahead goroutines before dropping the ticket
+		}
+		this.inflight.Add(-1)
+		err = this.f.Close()
+	})
+	return err
 }
 
 func (this *readahead) request() {
