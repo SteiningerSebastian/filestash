@@ -83,23 +83,32 @@ func (smb *Samba) Init(params map[string]string, app *App) (IBackend, error) {
 	if params["port"] == "" {
 		params["port"] = "445"
 	}
-	// remember everything a transparent reconnect needs later on
-	smb.username = strings.TrimSpace(params["username"])
-	smb.password = params["password"]
-	smb.domain = params["domain"]
-	smb.port = params["port"]
-	smb.server = params["host"]
-	smb.share = make(map[string]*smb2.Share, 0)
-	smb.inflight = &atomic.Int32{}
-	smb.wants = params["share"]
+	// CRITICAL: `smb` here is the REGISTERED PROTOTYPE (*Samba from
+	// Backend.Register) - never write onto it! Init must always populate a
+	// FRESH instance: two logins with different credentials would otherwise
+	// overwrite each other inside the shared object (user B's session/share
+	// map literally replacing user A's) and every user would end up browsing
+	// the LAST logged-in user's storage, with 404s + auth loops for the rest.
+	backend := &Samba{
+		// remember everything a transparent reconnect needs later on
+		server:   params["host"],
+		port:     params["port"],
+		username: strings.TrimSpace(params["username"]),
+		password: params["password"],
+		domain:   params["domain"],
+		wants:    params["share"],
+		share:    make(map[string]*smb2.Share, 0),
+		inflight: &atomic.Int32{},
+	}
 	if c := SambaCache.Get(params); c != nil {
 		return c.(*Samba), nil
 	}
-	if err := smb.dial(); err != nil {
+	if err := backend.dial(); err != nil {
+		Log.Debug("plg_backend_samba::connect host[%s] err[%s]", net.JoinHostPort(backend.server, backend.port), err.Error())
 		return nil, err
 	}
-	SambaCache.Set(params, smb)
-	return smb, nil
+	SambaCache.Set(params, backend)
+	return backend, nil
 }
 
 // dial establishes the TCP connection + SMB session and mounts the shares.
