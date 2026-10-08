@@ -1,7 +1,7 @@
-﻿import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
+import { createElement, createRender, onDestroy } from "../lib/skeleton/index.js";
 import { navigate, toHref } from "../lib/skeleton/router.js";
 import rxjs, { effect, onClick, preventDefault } from "../lib/rx.js";
-import { qs, safe } from "../lib/dom.js";
+import { qs } from "../lib/dom.js";
 import { settingsGet, settingsSave } from "../lib/store.js";
 import { loadCSS } from "../helpers/loader.js";
 import { getCurrentPath } from "../pages/viewerpage/common.js";
@@ -144,7 +144,12 @@ export default async function ctrlSidebar(render, {}) {
             throw err;
         }),
     ));
-    effect(onClick(qs($sidebar, `img[alt="close"]`)).pipe(
+    // HTL: the fork's brand header replaced the h3 that carried the
+    // collapse/close chevron - upstream's qs() THROWS on empty matches and
+    // this binding therefore crashed (Uncaught NotFoundError) on EVERY
+    // sidebar render, spamming the console. Existence-guarded now.
+    const $closeImg = $sidebar.querySelector(`img[alt="close"]`);
+    if ($closeImg) effect(onClick($closeImg).pipe(
         rxjs.tap(() => {
             settingsSave({ visible: false }, "sidebar");
             $sidebar.classList.add("hidden");

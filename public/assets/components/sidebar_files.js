@@ -1,5 +1,5 @@
 import rxjs, { effect } from "../lib/rx.js";
-import { createElement } from "../lib/skeleton/index.js";
+import { createElement, createRender } from "../lib/skeleton/index.js";
 import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
@@ -131,7 +131,7 @@ export default async function ctrlNavigationPane(render, { $sidebar, path }) {
 
     // feature: quick search
     // HTL: the "Your Files" search input was replaced by the hardcoded school
-    // logo (sidebar.js) — this handler stays for upstream parity but is a
+    // logo (sidebar.js) - this handler stays for upstream parity but is a
     // no-op unless such an input exists again (plain querySelector, since the
     // shared qs() helper THROWS on empty matches).
     const $searchInput = $sidebar.querySelector("h3 input");
