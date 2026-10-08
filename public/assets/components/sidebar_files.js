@@ -3,6 +3,8 @@ import { createElement } from "../lib/skeleton/index.js";
 import { toHref } from "../lib/skeleton/router.js";
 import { qs, qsa, safe } from "../lib/dom.js";
 import { forwardURLParams } from "../lib/path.js";
+import ajax from "../lib/ajax.js";
+import { report } from "../helpers/log.js";
 import cache from "../pages/filespage/cache.js";
 import { extractPath, isDir, isNativeFileUpload, htlFilterDirectory, htlHomeUser } from "../pages/filespage/helper.js";
 import { mv as mvVL, withVirtualLayer } from "../pages/filespage/model_virtual_layer.js";
@@ -15,6 +17,10 @@ const ICONS = {
 };
 
 export default async function ctrlNavigationPane(render, { $sidebar, path }) {
+    // navigation race guard for the heal below: the sidebar renders on both
+    // /files/... and /view/... routes, so compare raw pathnames; any
+    // navigation in the meantime invalidates this pane instance.
+    const openedAt = location.pathname + location.search;
     // feature: init dom
     const $fs = document.createDocumentFragment();
     const dirname = path.replace(new RegExp("[^\/]*$"), "");
@@ -33,6 +39,55 @@ export default async function ctrlNavigationPane(render, { $sidebar, path }) {
         }
     }
     render($fs);
+
+    // feature (HTL): cold-cache self healing. The navigation pane reads the
+    // indexedDB "file_path" cache ONLY (see _createListOfFiles): on the very
+    // first login the cache is empty, so every level of the tree falls back
+    // to its single "basename" entry and the root shows a lone "Users"
+    // folder instead of the real share list. Nothing repaired this: the
+    // hooks.ls listener below can only replace a <ul> that exists (there is
+    // no [data-path="/"] li at all when the root isn't cached) and the main
+    // listing only ever fetches the CURRENT folder. So: record which
+    // ancestors were missing, fetch each one over HTTP exactly once (also
+    // seeding the cache via the same shape ls() stores), then re-render the
+    // pane. Failure-tolerant: a network hiccup just keeps the fallback tree
+    // until the next hooks.ls/mutation event.
+    const missing = [];
+    for (let i=1; i<chunks.length; i++) {
+        const cpath = chunks.slice(0, i).join("/") + "/";
+        if (await cache().get(cpath) === null) missing.push(cpath);
+    }
+    if (missing.length > 0) {
+        let healed = false;
+        for (const cpath of missing) {
+            try {
+                const fullpath = cpath.replace(new RegExp("/$"), "");
+                const res = await ajax({
+                    url: forwardURLParams(`api/files/ls?path=${encodeURIComponent(fullpath + "/")}`, ["share"]),
+                    responseType: "json",
+                }).toPromise();
+                const { results = [], permissions = {} } = res.responseJSON || {};
+                await cache().store(cpath, { files: results, permissions });
+                hooks.ls.emit({ path: cpath, files: results, permissions });
+                healed = true;
+            } catch (err) {
+                report("can't list " + cpath + " for the sidebar", err);
+            }
+        }
+        if (healed) {
+            // the heal can race the user navigating deeper or the
+            // withInstantLoad cache replay swapping the DOM: only re-render
+            // if the route the pane was opened for is still current AND the
+            // holder is still in place, else the next navigation rebuilds
+            // the pane from the (now healed) cache anyway. Plain
+            // querySelector: the shared qs() THROWS on empty matches.
+            const $holder = $sidebar.querySelector("[data-bind=\"your-files\"]");
+            if ($holder && (location.pathname + location.search) === openedAt) {
+                ctrlNavigationPane(createRender($holder), { $sidebar, path });
+            }
+            return;
+        }
+    }
 
     // feature: listen for updates
     effect(new rxjs.Observable((subscriber) => {
